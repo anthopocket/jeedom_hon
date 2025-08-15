@@ -1122,7 +1122,7 @@ private function createMappedInfoCommands() {
        // 'pause' => ['name' => 'État pause', 'subtype' => 'binary'],
         'remoteCtrValid' => ['name' => 'Contrôle distant', 'subtype' => 'binary'],
         'machine_state' => ['name' => 'État machine', 'subtype' => 'string'],
-        'connection_status' => ['name' => 'Statut connexion', 'subtype' => 'string'],
+        'connection_status' => ['name' => 'Statut connexion', 'subtype' => 'binary'],
         'estimated_end_time' => ['name' => 'Heure fin estimée', 'subtype' => 'string']
     ];
     
