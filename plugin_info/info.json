@@ -23,15 +23,10 @@
     },
     "language": [
         "fr_FR",
-        "en_US"
+     
     ],
     "compatibility": [
-        "miniplus",
-        "smart",
-        "rpi",
-        "docker",
-        "diy",
-        "mobile",
+             "diy",
         "v4"
     ],
     "os": {
