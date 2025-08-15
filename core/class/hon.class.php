@@ -102,7 +102,7 @@ class hon extends eqLogic {
             if ($result && isset($result['devices'])) {
                 foreach ($result['devices'] as $deviceResult) {
                     if ($deviceResult['success']) {
-                        self::updateDeviceFromQuickData($deviceResult);
+                       self::updateDeviceFromQuickDataWithTranslation($deviceResult);
                     } else {
                         log::add('hon', 'warning', 'Échec rafraîchissement ' . $deviceResult['mac_address'] . ': ' . ($deviceResult['error'] ?? 'Erreur inconnue'));
                     }
@@ -1090,7 +1090,7 @@ try {
         log::add('hon', 'debug', 'Création commandes pour ' . $this->getName() . ' dans ' . $dataDir);
         
         // 1. Créer UNIQUEMENT les commandes info mappées
-        $this->createMappedInfoCommands();
+        $this->createMappedInfoCommandsWithTranslation();
         
         // 2. Créer les commandes d'action depuis les programmes
         $this->createActionCommandsFromPrograms($dataDir, $macFilename);
@@ -1754,7 +1754,193 @@ private function createMappedInfoCommands() {
             'last_sync' => config::byKey('lastSyncTime', 'hon', 'Jamais')
         ];
     }
+
+
+
+private static $translationCache = [];
+
+    private static function loadTranslations($applianceType) {
+        if (isset(self::$translationCache[$applianceType])) {
+            return self::$translationCache[$applianceType];
+        }
+        $resourcesDir = __DIR__ . '/../../resources';
+        $translationFile = $resourcesDir . '/' . $applianceType . '_programme.json';
+        if (!file_exists($translationFile)) {
+            log::add('hon', 'warning', 'Fichier de traduction non trouvé : ' . $translationFile);
+            return null;
+        }
+        $content = file_get_contents($translationFile);
+        $translations = json_decode($content, true);
+        if (!$translations) {
+            log::add('hon', 'error', 'JSON invalide dans le fichier de traduction : ' . $translationFile);
+            return null;
+        }
+        self::$translationCache[$applianceType] = $translations;
+        return $translations;
+    }
+
+public static function translateProgramCode($programCode, $applianceType = 'WM') {
+    $translations = self::loadTranslations($applianceType);
+    if (!$translations || !isset($translations['programs'])) {
+        return "";  // ← VIDE SI PAS DE FICHIER
+    }
+    foreach ($translations['programs'] as $program) {
+        if (isset($program['code']) && $program['code'] == $programCode) {
+            return $program['display_name'] ?? $program['name'] ?? "";
+        }
+        if (isset($program['prCode']) && $program['prCode'] == $programCode) {
+            return $program['display_name'] ?? $program['name'] ?? "";
+        }
+    }
+    return "";  // ← VIDE SI PAS TROUVÉ
 }
+
+    public static function translateDryLevel($dryLevel, $applianceType = 'TD') {
+        $translations = self::loadTranslations($applianceType);
+        if (!$translations || !isset($translations['dry_levels'])) {
+            return "Niveau " . $dryLevel;
+        }
+        foreach ($translations['dry_levels'] as $level) {
+            if (isset($level['code']) && $level['code'] == $dryLevel) {
+                return $level['display_name'] ?? $level['name'] ?? "Niveau " . $dryLevel;
+            }
+            if (isset($level['value']) && $level['value'] == $dryLevel) {
+                return $level['display_name'] ?? $level['name'] ?? "Niveau " . $dryLevel;
+            }
+        }
+        return "Niveau " . $dryLevel;
+    }
+
+    private static function updateDeviceFromQuickDataWithTranslation($deviceResult) {
+        try {
+            $macAddress = $deviceResult['mac_address'];
+            $eqLogic = self::byLogicalId($macAddress, 'hon');
+            if (!is_object($eqLogic)) {
+                $macWithColons = str_replace('-', ':', $macAddress);
+                $eqLogic = self::byLogicalId($macWithColons, 'hon');
+            }
+            if (!is_object($eqLogic)) {
+                log::add('hon', 'warning', 'Équipement non trouvé pour MAC : ' . $macAddress);
+                return;
+            }
+            $data = $deviceResult['data'] ?? [];
+            $hasUpdates = false;
+            $applianceType = $eqLogic->getConfiguration('applianceType', 'WM');
+            $applianceTypeCode = self::getApplianceTypeCode($applianceType);
+            $keyMapping = [
+                'machine_mode' => 'machMode', 'program_code' => 'prCode', 'remaining_time' => 'remainingTimeMM',
+                'door_lock' => 'doorLockStatus', 'door_status' => 'doorStatus', 'errors' => 'errors',
+                'temperature' => 'temp', 'spin_speed' => 'spinSpeed', 'total_cycles' => 'totalWashCycle',
+                'current_cycle' => 'currentWashCycle', 'remote_control' => 'remoteCtrValid',
+                'total_water_used' => 'totalWaterUsed', 'current_water_used' => 'currentWaterUsed',
+                'total_electricity_used' => 'totalElectricityUsed', 'current_electricity_used' => 'currentElectricityUsed',
+                'estimated_weight' => 'actualWeight', 'auto_detergent' => 'autoDetergentStatus',
+                'auto_softener' => 'autoSoftenerStatus', 'dry_level' => 'dryLevel',
+                'sterilization_status' => 'sterilizationStatus', 'status' => 'machine_state',
+                'connection_status' => 'connection_status', 'estimated_end_time' => 'estimated_end_time'
+            ];
+            foreach ($data as $pythonKey => $valueData) {
+                if (isset($keyMapping[$pythonKey])) {
+                    $cmdLogicalId = $keyMapping[$pythonKey];
+                } else {
+                    continue;
+                }
+                $cmd = $eqLogic->getCmd(null, $cmdLogicalId);
+                if (is_object($cmd)) {
+                    $newValue = $valueData['value'];
+                    if ($pythonKey === 'program_code') {
+                        $translatedValue = self::translateProgramCode($newValue, $applianceTypeCode);
+                        $translatedCmd = $eqLogic->getCmd(null, 'prCodeTranslated');
+                        if (!is_object($translatedCmd)) {
+                            $translatedCmd = new honCmd();
+                            $translatedCmd->setLogicalId('prCodeTranslated');
+                            $translatedCmd->setEqLogic_id($eqLogic->getId());
+                            $translatedCmd->setName('Nom du programme');
+                            $translatedCmd->setType('info');
+                            $translatedCmd->setSubType('string');
+                            $translatedCmd->setIsVisible(1);
+                            $translatedCmd->save();
+                        }
+                        $currentTranslatedValue = $translatedCmd->execCmd();
+                        if ($currentTranslatedValue != $translatedValue) {
+                            $translatedCmd->event($translatedValue);
+                            $hasUpdates = true;
+                        }
+                    } elseif ($pythonKey === 'dry_level') {
+                        $translatedValue = self::translateDryLevel($newValue, $applianceTypeCode);
+                        $translatedCmd = $eqLogic->getCmd(null, 'dryLevelTranslated');
+                        if (!is_object($translatedCmd)) {
+                            $translatedCmd = new honCmd();
+                            $translatedCmd->setLogicalId('dryLevelTranslated');
+                            $translatedCmd->setEqLogic_id($eqLogic->getId());
+                            $translatedCmd->setName('Niveau de séchage');
+                            $translatedCmd->setType('info');
+                            $translatedCmd->setSubType('string');
+                            $translatedCmd->setIsVisible(1);
+                            $translatedCmd->save();
+                        }
+                        $currentTranslatedValue = $translatedCmd->execCmd();
+                        if ($currentTranslatedValue != $translatedValue) {
+                            $translatedCmd->event($translatedValue);
+                            $hasUpdates = true;
+                        }
+                    }
+                    $currentValue = $cmd->execCmd();
+                    if (is_bool($newValue)) {
+                        $newValue = $newValue ? 1 : 0;
+                    }
+                    if ($currentValue != $newValue) {
+                        $cmd->event($newValue);
+                        $hasUpdates = true;
+                    }
+                }
+            }
+            $eqLogic->setConfiguration('lastRefresh', time());
+            $eqLogic->save();
+        } catch (Exception $e) {
+            log::add('hon', 'error', 'Erreur updateDeviceFromQuickDataWithTranslation : ' . $e->getMessage());
+        }
+    }
+
+    private function createMappedInfoCommandsWithTranslation() {
+        $applianceType = $this->getConfiguration('applianceType', '');
+        $applianceTypeCode = self::getApplianceTypeCode($applianceType);
+        $this->createMappedInfoCommands();
+        $this->createInfoCommand('prCodeTranslated', 'Nom du programme', 'string');
+        if (in_array($applianceTypeCode, ['TD', 'WD'])) {
+            $this->createInfoCommand('dryLevelTranslated', 'Niveau de séchage', 'string');
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
 
 class honCmd extends cmd {
     /**
