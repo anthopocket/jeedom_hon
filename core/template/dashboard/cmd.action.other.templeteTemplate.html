@@ -1,0 +1,415 @@
+<div class="eqLogic eqLogic-widget hon-widget" data-eqlogic_id="#id#" data-eqlogic_uid="#uid#" data-version="dashboard" style="width: #width#;height: #height#;#style#">
+    
+    <!-- En-tête du widget -->
+    <div class="widget-header">
+        <center class="widget-name">
+            <a href="#eqLink#" style="font-size:1.1em;color:#deviceTypeColor#;">
+                <i class="#icon#" style="margin-right:5px;"></i>
+                <span class="widget-name-text">#name_display#</span>
+            </a>
+        </center>
+    </div>
+
+    <!-- Corps principal du widget -->
+    <div class="widget-body" style="padding: 10px;">
+        
+        <!-- Statut principal -->
+        <div class="main-status" style="margin-bottom: 10px;">
+            <div class="row">
+                <div class="col-xs-8">
+                    <div class="machine-state">
+                        <i class="fas fa-power-off status-icon" style="color: #machineStateColor#;"></i>
+                        <span class="status-text" style="font-weight: bold;">#machineState#</span>
+                    </div>
+                </div>
+                <div class="col-xs-4 text-right">
+                    <div class="connection-status">
+                        <i class="fas fa-wifi" style="color: #connectionColor#;" title="Connexion"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informations principales -->
+        <div class="main-info">
+            
+            <!-- Programme en cours -->
+            <div class="info-row" style="margin-bottom: 8px;">
+                <div class="row">
+                    <div class="col-xs-6">
+                        <i class="fas fa-list-alt" style="color: #666; margin-right: 5px;"></i>
+                        <span style="font-size: 0.9em;">{{Programme}}</span>
+                    </div>
+                    <div class="col-xs-6 text-right">
+                        <span style="font-weight: bold; font-size: 0.9em;">#programName#</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Temps restant -->
+            <div class="info-row" style="margin-bottom: 8px;">
+                <div class="row">
+                    <div class="col-xs-6">
+                        <i class="fas fa-clock" style="color: #666; margin-right: 5px;"></i>
+                        <span style="font-size: 0.9em;">{{Temps restant}}</span>
+                    </div>
+                    <div class="col-xs-6 text-right">
+                        <span style="font-weight: bold; font-size: 0.9em; color: #remainingTimeColor#;">#remainingTime#</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Température -->
+            <div class="info-row" style="margin-bottom: 8px;">
+                <div class="row">
+                    <div class="col-xs-6">
+                        <i class="fas fa-thermometer-half" style="color: #666; margin-right: 5px;"></i>
+                        <span style="font-size: 0.9em;">{{Température}}</span>
+                    </div>
+                    <div class="col-xs-6 text-right">
+                        <span style="font-weight: bold; font-size: 0.9em;">#temperature#°C</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vitesse d'essorage (pour machines à laver) -->
+            <div class="info-row washing-machine-only" style="margin-bottom: 8px;">
+                <div class="row">
+                    <div class="col-xs-6">
+                        <i class="fas fa-sync-alt" style="color: #666; margin-right: 5px;"></i>
+                        <span style="font-size: 0.9em;">{{Essorage}}</span>
+                    </div>
+                    <div class="col-xs-6 text-right">
+                        <span style="font-weight: bold; font-size: 0.9em;">#spinSpeed# rpm</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Barre de progression -->
+        <div class="progress-container" style="margin: 10px 0;">
+            <div class="progress" style="height: 6px; background-color: #f0f0f0; border-radius: 3px;">
+                <div class="progress-bar" 
+                     style="width: #progressPercent#%; 
+                            background-color: #progressColor#; 
+                            height: 100%; 
+                            border-radius: 3px; 
+                            transition: width 0.5s ease;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions rapides -->
+        <div class="quick-actions" style="margin-top: 10px;">
+            <div class="row">
+                <div class="col-xs-4">
+                    <button class="btn btn-xs btn-primary hon-quick-action" 
+                            data-action="refresh" 
+                            style="width: 100%; font-size: 0.8em;">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <div class="col-xs-4">
+                    <button class="btn btn-xs btn-success hon-quick-action" 
+                            data-action="start" 
+                            style="width: 100%; font-size: 0.8em;"
+                            #startButtonState#>
+                        <i class="fas fa-play"></i>
+                    </button>
+                </div>
+                <div class="col-xs-4">
+                    <button class="btn btn-xs btn-danger hon-quick-action" 
+                            data-action="stop" 
+                            style="width: 100%; font-size: 0.8em;"
+                            #stopButtonState#>
+                        <i class="fas fa-stop"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informations secondaires (repliables) -->
+        <div class="secondary-info" style="margin-top: 10px;">
+            <div class="panel-group">
+                <div class="panel panel-default" style="margin-bottom: 0;">
+                    <div class="panel-heading" style="padding: 5px 10px; cursor: pointer;" 
+                         data-toggle="collapse" data-target="#collapse-#id#">
+                        <span style="font-size: 0.8em;">
+                            <i class="fas fa-chevron-down" style="margin-right: 5px;"></i>
+                            {{Plus d'infos}}
+                        </span>
+                    </div>
+                    <div id="collapse-#id#" class="panel-collapse collapse">
+                        <div class="panel-body" style="padding: 8px;">
+                            
+                            <!-- MAC Address -->
+                            <div class="detail-row">
+                                <span style="font-size: 0.8em; color: #666;">{{MAC}}: </span>
+                                <span style="font-size: 0.8em;">#macAddress#</span>
+                            </div>
+                            
+                            <!-- Type d'appareil -->
+                            <div class="detail-row">
+                                <span style="font-size: 0.8em; color: #666;">{{Type}}: </span>
+                                <span style="font-size: 0.8em;">#deviceType#</span>
+                            </div>
+                            
+                            <!-- Dernière mise à jour -->
+                            <div class="detail-row">
+                                <span style="font-size: 0.8em; color: #666;">{{MAJ}}: </span>
+                                <span style="font-size: 0.8em;">#lastUpdate#</span>
+                            </div>
+                            
+                            <!-- Programmes disponibles -->
+                            <div class="detail-row">
+                                <span style="font-size: 0.8em; color: #666;">{{Programmes}}: </span>
+                                <span style="font-size: 0.8em;">#programsCount#</span>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Pied du widget -->
+    <div class="widget-footer" style="text-align: center; padding: 5px; font-size: 0.7em; color: #999;">
+        <span class="collectDate" title="#collectDate#">#collectDate#</span>
+    </div>
+
+</div>
+
+<!-- Styles CSS spécifiques -->
+<style>
+.hon-widget {
+    background-color: var(--eq-bg-color, #ffffff);
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.hon-widget:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transform: translateY(-1px);
+}
+
+.hon-widget .widget-header {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-bottom: 1px solid #dee2e6;
+    padding: 8px;
+}
+
+.hon-widget .widget-name-text {
+    font-weight: 600;
+    text-shadow: 0 1px 1px rgba(255,255,255,0.8);
+}
+
+.hon-widget .main-status {
+    background-color: rgba(0,123,255,0.05);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.hon-widget .status-icon {
+    font-size: 1.2em;
+    margin-right: 8px;
+}
+
+.hon-widget .info-row {
+    border-bottom: 1px solid #f0f0f0;
+    padding: 2px 0;
+}
+
+.hon-widget .info-row:last-child {
+    border-bottom: none;
+}
+
+.hon-widget .progress {
+    margin: 8px 0;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.hon-widget .progress-bar {
+    background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
+    transition: width 0.6s ease;
+}
+
+.hon-widget .hon-quick-action {
+    border: none;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    margin: 1px;
+}
+
+.hon-widget .hon-quick-action:hover {
+    transform: scale(1.05);
+}
+
+.hon-widget .hon-quick-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.hon-widget .panel-heading {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.hon-widget .panel-heading:hover {
+    background-color: #e9ecef;
+}
+
+.hon-widget .detail-row {
+    margin-bottom: 3px;
+    padding: 1px 0;
+}
+
+.hon-widget .detail-row:last-child {
+    margin-bottom: 0;
+}
+
+/* Couleurs par type d'appareil */
+.hon-widget[data-appliance-type="washing_machine"] .widget-header {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+}
+
+.hon-widget[data-appliance-type="tumble_dryer"] .widget-header {
+    background: linear-gradient(135deg, #fff3e0 0%, #ffcc80 100%);
+}
+
+.hon-widget[data-appliance-type="oven"] .widget-header {
+    background: linear-gradient(135deg, #fce4ec 0%, #f8bbd9 100%);
+}
+
+/* States visuels */
+.machine-state-running {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .hon-widget .info-row .col-xs-6 {
+        font-size: 0.8em;
+    }
+    
+    .hon-widget .hon-quick-action {
+        padding: 4px 2px;
+        font-size: 0.7em;
+    }
+}
+</style>
+
+<!-- JavaScript pour les actions -->
+<script>
+$(document).ready(function() {
+    // Gestion des actions rapides
+    $('.hon-quick-action[data-action="refresh"]').off('click').on('click', function() {
+        var eqLogicId = $(this).closest('.hon-widget').attr('data-eqlogic_id');
+        jeedom.cmd.execute({
+            id: $(this).closest('.eqLogic').find('.cmd[data-logical_id="refresh"]').attr('data-cmd_id')
+        });
+    });
+    
+    $('.hon-quick-action[data-action="start"]').off('click').on('click', function() {
+        var eqLogicId = $(this).closest('.hon-widget').attr('data-eqlogic_id');
+        // Afficher modal de sélection de programme
+        showProgramSelectionModal(eqLogicId);
+    });
+    
+    $('.hon-quick-action[data-action="stop"]').off('click').on('click', function() {
+        var eqLogicId = $(this).closest('.hon-widget').attr('data-eqlogic_id');
+        jeedom.cmd.execute({
+            id: $(this).closest('.eqLogic').find('.cmd[data-logical_id="stop"]').attr('data-cmd_id')
+        });
+    });
+});
+
+function showProgramSelectionModal(eqLogicId) {
+    // Modal simple pour sélection rapide de programme
+    bootbox.dialog({
+        title: '{{Lancer un programme}}',
+        message: '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> {{Chargement des programmes...}}</div>',
+        buttons: {
+            cancel: {
+                label: '{{Annuler}}',
+                className: 'btn-default'
+            }
+        }
+    });
+    
+    // Charger les programmes via AJAX
+    $.ajax({
+        type: 'POST',
+        url: 'plugins/hon/core/ajax/hon.ajax.php',
+        data: {
+            action: 'getAvailablePrograms',
+            id: eqLogicId
+        },
+        dataType: 'json',
+        success: function(data) {
+            if (data.state === 'ok') {
+                var programs = data.result;
+                var html = '<div class="row">';
+                
+                programs.slice(0, 6).forEach(function(program) {
+                    html += '<div class="col-xs-6 col-sm-4">';
+                    html += '<button class="btn btn-primary btn-block program-btn" data-program="' + program.name + '" style="margin-bottom: 10px;">';
+                    html += '<i class="fas fa-play"></i><br>' + program.display_name;
+                    html += '</button>';
+                    html += '</div>';
+                });
+                
+                html += '</div>';
+                
+                $('.bootbox .bootbox-body').html(html);
+                
+                // Gestion des clics sur programmes
+                $('.program-btn').off('click').on('click', function() {
+                    var programName = $(this).data('program');
+                    launchProgram(eqLogicId, programName);
+                    $('.bootbox').modal('hide');
+                });
+            }
+        }
+    });
+}
+
+function launchProgram(eqLogicId, programName) {
+    $.ajax({
+        type: 'POST',
+        url: 'plugins/hon/core/ajax/hon.ajax.php',
+        data: {
+            action: 'launchProgram',
+            id: eqLogicId,
+            program: programName
+        },
+        dataType: 'json',
+        success: function(data) {
+            if (data.state === 'ok') {
+                jeedomUtils.showAlert({
+                    message: '{{Programme lancé avec succès}}',
+                    level: 'success'
+                });
+            } else {
+                jeedomUtils.showAlert({
+                    message: data.result,
+                    level: 'danger'
+                });
+            }
+        }
+    });
+}
+</script>
