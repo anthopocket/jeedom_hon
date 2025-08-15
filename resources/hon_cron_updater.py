@@ -310,7 +310,7 @@ class HonDataExtractor:
         last_conn = context.get("lastConnEvent", {})
         is_connected = last_conn.get("category") == "CONNECTED"
         derived['connection_status'] = {
-            'value': "Connecté" if is_connected else "Déconnecté",
+            'value': "1" if is_connected else "0",
             'last_update': last_conn.get("instantTime", datetime.now(timezone.utc).isoformat()),
             'api_key': 'calculated'
         }
