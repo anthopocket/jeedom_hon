@@ -288,8 +288,8 @@ class HonDataExtractor:
         if 'machine_mode' in extracted:
             mode = extracted['machine_mode']['value']
             status_map = {
-                0: "Off", 1: "Ready", 2: "Running", 3: "Pause",
-                4: "Scheduled", 5: "Error", 6: "Finished", 7: "Finished"
+                0: "Arret", 1: "Prêt", 2: "En cours", 3: "Pause",
+                4: "Programmé", 5: "Erreur", 6: "Terminé", 7: "Terminé"
             }
             derived['status'] = {
                 'value': status_map.get(int(mode), "Unknown"),
