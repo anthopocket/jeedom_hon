@@ -14,7 +14,7 @@
     "maxDependancyInstallTime": 30,
     "changelog": "https://github.com/jeedom/plugin-hon/blob/stable/docs/fr_FR/changelog.md",
     "documentation": "https://github.com/jeedom/plugin-hon/blob/stable/docs/fr_FR/index.md",
-    "changelog_beta": "https://github.com/jeedom/plugin-hon/blob/beta/docs/fr_FR/changelog.md",
+    "changelog_beta": "https://github.com/anthopocket/jeedom_hon/blob/beta/docs/fr_FR/changelog_beta.md",
     "documentation_beta": "https://github.com/jeedom/plugin-hon/blob/beta/docs/fr_FR/index.md",
     "link": {
         "forum": "https://community.jeedom.com/tags/plugin-hon",
