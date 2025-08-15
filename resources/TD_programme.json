@@ -1,0 +1,466 @@
+{
+  "appliance_type": "TD",
+  "model": "Haier HD90-A2959R-FR",
+  "description": "Programmes pour sèche-linge Haier avec codes prCode et traductions",
+  "last_updated": "2025-08-14",
+  "programs": [
+    {
+      "code": "60",
+      "prCode": "60",
+      "position": null,
+      "name": "Séchage rapide",
+      "display_name": "Séchage rapide",
+      "description": "Programme court pour petit linge",
+      "api_key": "PROGRAMS.TD.HQD_QUICK_READY"
+    },
+    {
+      "code": "61",
+      "prCode": "61",
+      "position": null,
+      "name": "Délicat",
+      "display_name": "Délicat",
+      "description": "Tissus fragiles, basse température",
+      "api_key": "PROGRAMS.TD.HQD_DELICATE"
+    },
+    {
+      "code": "62",
+      "prCode": "62",
+      "position": 1,
+      "name": "Coton",
+      "display_name": "Coton",
+      "description": "Programme principal pour coton",
+      "api_key": "PROGRAMS.TD.HQD_COTTON"
+    },
+    {
+      "code": "63",
+      "prCode": "63",
+      "position": 2,
+      "name": "Synthétiques",
+      "display_name": "Synthétiques",
+      "description": "Fibres synthétiques",
+      "api_key": "PROGRAMS.TD.HQD_SYNTHETICS"
+    },
+    {
+      "code": "64",
+      "prCode": "64",
+      "position": 3,
+      "name": "Mixte",
+      "display_name": "Mixte",
+      "description": "Mélange coton/synthétique",
+      "api_key": "PROGRAMS.TD.HQD_MIXED"
+    },
+    {
+      "code": "65",
+      "prCode": "65",
+      "position": 4,
+      "name": "Chemises",
+      "display_name": "Chemises",
+      "description": "Chemises et vêtements de travail",
+      "api_key": "PROGRAMS.TD.HQD_SHIRTS"
+    },
+    {
+      "code": "66",
+      "prCode": "66",
+      "position": 5,
+      "name": "Jeans",
+      "display_name": "Jeans",
+      "description": "Denim et tissus épais",
+      "api_key": "PROGRAMS.TD.HQD_JEANS"
+    },
+    {
+      "code": "67",
+      "prCode": "67",
+      "position": 6,
+      "name": "Serviettes",
+      "display_name": "Serviettes",
+      "description": "Linge de bain éponge",
+      "api_key": "PROGRAMS.TD.HQD_TOWELS"
+    },
+    {
+      "code": "68",
+      "prCode": "68",
+      "position": 7,
+      "name": "Baby Protect",
+      "display_name": "Baby Protect",
+      "description": "Linge de bébé",
+      "api_key": "PROGRAMS.TD.HQD_BABY_PROTECT"
+    },
+    {
+      "code": "69",
+      "prCode": "69",
+      "position": 8,
+      "name": "Literie",
+      "display_name": "Literie",
+      "description": "Draps et linge de lit",
+      "api_key": "PROGRAMS.TD.HQD_BEDDING"
+    },
+    {
+      "code": "70",
+      "prCode": "70",
+      "position": 9,
+      "name": "Laine",
+      "display_name": "Laine",
+      "description": "Lainages délicats",
+      "api_key": "PROGRAMS.TD.HQD_WOOL"
+    },
+    {
+      "code": "71",
+      "prCode": "71",
+      "position": 10,
+      "name": "Sport/Outdoor",
+      "display_name": "Sport/Outdoor",
+      "description": "Vêtements de sport",
+      "api_key": "PROGRAMS.TD.HQD_OUTDOOR"
+    },
+    {
+      "code": "72",
+      "prCode": "72",
+      "position": 11,
+      "name": "Sous-vêtements",
+      "display_name": "Sous-vêtements",
+      "description": "Lingerie fine",
+      "api_key": "PROGRAMS.TD.HQD_UNDERWEAR"
+    },
+    {
+      "code": "73",
+      "prCode": "73",
+      "position": 12,
+      "name": "Couette",
+      "display_name": "Couette",
+      "description": "Couettes et édredons",
+      "api_key": "PROGRAMS.TD.HQD_DUVET"
+    },
+    {
+      "code": "74",
+      "prCode": "74",
+      "position": 13,
+      "name": "Séchage rapide 59min",
+      "display_name": "Séchage rapide 59min",
+      "description": "Cycle express",
+      "api_key": "PROGRAMS.TD.IOT_DRY_RAPID_59"
+    },
+    {
+      "code": "75",
+      "prCode": "75",
+      "position": 14,
+      "name": "Séchage rapide 30min",
+      "display_name": "Séchage rapide 30min",
+      "description": "Cycle ultra-rapide",
+      "api_key": "PROGRAMS.TD.IOT_DRY_RAPID_30"
+    },
+    {
+      "code": "76",
+      "prCode": "76",
+      "position": 15,
+      "name": "I-Refresh",
+      "display_name": "I-Refresh",
+      "description": "Rafraîchissement sans eau",
+      "api_key": "PROGRAMS.TD.IOT_REFRESH"
+    },
+    {
+      "code": "77",
+      "prCode": "77",
+      "position": 16,
+      "name": "Anti-acariens",
+      "display_name": "Anti-acariens",
+      "description": "Élimination des acariens",
+      "api_key": "PROGRAMS.TD.IOT_ANTI_MITES"
+    },
+    {
+      "code": "78",
+      "prCode": "78",
+      "position": 17,
+      "name": "Stérilisation",
+      "display_name": "Stérilisation",
+      "description": "Hygiène maximale",
+      "api_key": "PROGRAMS.TD.IOT_STERILIZATION"
+    },
+    {
+      "code": "79",
+      "prCode": "79",
+      "position": 18,
+      "name": "Anti-allergène",
+      "display_name": "Anti-allergène",
+      "description": "Pour peaux sensibles",
+      "api_key": "PROGRAMS.TD.IOT_ANTI_ALLERGEN"
+    },
+    {
+      "code": "80",
+      "prCode": "80",
+      "position": 19,
+      "name": "Minuterie 30min",
+      "display_name": "Minuterie 30min",
+      "description": "Temps personnalisé",
+      "api_key": "PROGRAMS.TD.IOT_TIMER_30"
+    },
+    {
+      "code": "81",
+      "prCode": "81",
+      "position": 20,
+      "name": "Minuterie 60min",
+      "display_name": "Minuterie 60min",
+      "description": "Temps personnalisé",
+      "api_key": "PROGRAMS.TD.IOT_TIMER_60"
+    },
+    {
+      "code": "82",
+      "prCode": "82",
+      "position": 21,
+      "name": "Minuterie 90min",
+      "display_name": "Minuterie 90min",
+      "description": "Temps personnalisé",
+      "api_key": "PROGRAMS.TD.IOT_TIMER_90"
+    },
+    {
+      "code": "83",
+      "prCode": "83",
+      "position": 22,
+      "name": "Minuterie 120min",
+      "display_name": "Minuterie 120min",
+      "description": "Temps personnalisé",
+      "api_key": "PROGRAMS.TD.IOT_TIMER_120"
+    },
+    {
+      "code": "84",
+      "prCode": "84",
+      "position": 23,
+      "name": "Séchage auto",
+      "display_name": "Séchage auto",
+      "description": "Détection automatique",
+      "api_key": "PROGRAMS.TD.IOT_AUTO_DRY"
+    },
+    {
+      "code": "85",
+      "prCode": "85",
+      "position": 24,
+      "name": "Séchage éco",
+      "display_name": "Séchage éco",
+      "description": "Programme économique",
+      "api_key": "PROGRAMS.TD.IOT_ECO_DRY"
+    },
+    {
+      "code": "86",
+      "prCode": "86",
+      "position": 25,
+      "name": "Séchage parfait",
+      "display_name": "Séchage parfait",
+      "description": "Résultat optimal",
+      "api_key": "PROGRAMS.TD.IOT_PERFECT_DRY"
+    },
+    {
+      "code": "87",
+      "prCode": "87",
+      "position": 26,
+      "name": "Séchage intelligent",
+      "display_name": "Séchage intelligent",
+      "description": "IA adaptative",
+      "api_key": "PROGRAMS.TD.IOT_SMART_DRY"
+    },
+    {
+      "code": "88",
+      "prCode": "88",
+      "position": 27,
+      "name": "Hygiène Pro",
+      "display_name": "Hygiène Pro",
+      "description": "Désinfection avancée",
+      "api_key": "PROGRAMS.TD.IOT_HYGIENE_PRO"
+    },
+    {
+      "code": "89",
+      "prCode": "89",
+      "position": 28,
+      "name": "Vêtements d'hiver",
+      "display_name": "Vêtements d'hiver",
+      "description": "Manteaux et vestes",
+      "api_key": "PROGRAMS.TD.IOT_WINTER_WEAR"
+    },
+    {
+      "code": "90",
+      "prCode": "90",
+      "position": 29,
+      "name": "Soie",
+      "display_name": "Soie",
+      "description": "Tissus précieux",
+      "api_key": "PROGRAMS.TD.IOT_SILK"
+    },
+    {
+      "code": "91",
+      "prCode": "91",
+      "position": 30,
+      "name": "Rideaux",
+      "display_name": "Rideaux",
+      "description": "Textiles d'ameublement",
+      "api_key": "PROGRAMS.TD.IOT_CURTAINS"
+    },
+    {
+      "code": "92",
+      "prCode": "92",
+      "position": 31,
+      "name": "Vapeur rafraîchissante",
+      "display_name": "Vapeur rafraîchissante",
+      "description": "Défroissage vapeur",
+      "api_key": "PROGRAMS.TD.IOT_STEAM_REFRESH"
+    },
+    {
+      "code": "93",
+      "prCode": "93",
+      "position": 32,
+      "name": "Soin allergies",
+      "display_name": "Soin allergies",
+      "description": "Programme médical",
+      "api_key": "PROGRAMS.TD.IOT_ALLERGY_CARE"
+    },
+    {
+      "code": "94",
+      "prCode": "94",
+      "position": 33,
+      "name": "15 minutes",
+      "display_name": "15 minutes",
+      "description": "Cycle express court",
+      "api_key": "PROGRAMS.TD.IOT_15_MIN"
+    },
+    {
+      "code": "95",
+      "prCode": "95",
+      "position": 34,
+      "name": "20 minutes",
+      "display_name": "20 minutes",
+      "description": "Cycle court",
+      "api_key": "PROGRAMS.TD.IOT_20_MIN"
+    },
+    {
+      "code": "96",
+      "prCode": "96",
+      "position": 35,
+      "name": "Vêtements de sport",
+      "display_name": "Vêtements de sport",
+      "description": "Textiles techniques",
+      "api_key": "PROGRAMS.TD.IOT_ACTIVE_WEAR"
+    },
+    {
+      "code": "97",
+      "prCode": "97",
+      "position": 36,
+      "name": "Repassage facile",
+      "display_name": "Repassage facile",
+      "description": "Prêt à repasser",
+      "api_key": "PROGRAMS.TD.IOT_EASY_IRON"
+    },
+    {
+      "code": "98",
+      "prCode": "98",
+      "position": 37,
+      "name": "Soin délicat",
+      "display_name": "Soin délicat",
+      "description": "Ultra-doux",
+      "api_key": "PROGRAMS.TD.IOT_DELICATE_CARE"
+    },
+    {
+      "code": "99",
+      "prCode": "99",
+      "position": 38,
+      "name": "Spécial 39min",
+      "display_name": "Spécial 39min",
+      "description": "Programme particulier",
+      "api_key": "PROGRAMS.TD.IOT_SPECIAL_39"
+    },
+    {
+      "code": "100",
+      "prCode": "100",
+      "position": 39,
+      "name": "Personnalisé",
+      "display_name": "Personnalisé",
+      "description": "Réglages utilisateur",
+      "api_key": "PROGRAMS.TD.IOT_CUSTOM"
+    },
+    {
+      "code": "101",
+      "prCode": "101",
+      "position": 40,
+      "name": "Entretien",
+      "display_name": "Entretien",
+      "description": "Nettoyage machine",
+      "api_key": "PROGRAMS.TD.IOT_MAINTENANCE"
+    },
+    {
+      "code": "102",
+      "prCode": "102",
+      "position": 41,
+      "name": "Test",
+      "display_name": "Test",
+      "description": "Diagnostic machine",
+      "api_key": "PROGRAMS.TD.IOT_TEST"
+    }
+  ],
+  "dry_levels": [
+    {
+      "code": "11",
+      "name": "Minuterie",
+      "display_name": "Minuterie",
+      "description": "Temps personnalisé en minutes"
+    },
+    {
+      "code": "12",
+      "name": "Prêt à ranger",
+      "display_name": "Prêt à ranger",
+      "description": "Légèrement humide"
+    },
+    {
+      "code": "13",
+      "name": "Prêt à repasser",
+      "display_name": "Prêt à repasser",
+      "description": "Humide pour repassage"
+    },
+    {
+      "code": "14",
+      "name": "Très sec",
+      "display_name": "Très sec",
+      "description": "Complètement sec"
+    }
+  ],
+  "options": [
+    {
+      "code": "opt1",
+      "name": "Anti-froissement",
+      "display_name": "Anti-froissement",
+      "description": "Rotation périodique",
+      "api_key": "anticrease"
+    },
+    {
+      "code": "opt2",
+      "name": "Gestionnaire de séchage",
+      "display_name": "Gestionnaire de séchage",
+      "description": "Optimisation auto",
+      "api_key": "dryingManager"
+    },
+    {
+      "code": "opt3",
+      "name": "Meilleur repassage",
+      "display_name": "Meilleur repassage",
+      "description": "Préparation repassage",
+      "api_key": "bestIroning"
+    },
+    {
+      "code": "opt4",
+      "name": "Hybride",
+      "display_name": "Hybride",
+      "description": "Mode mixte",
+      "api_key": "hybrid"
+    },
+    {
+      "code": "opt5",
+      "name": "Photo Plasma",
+      "display_name": "Photo Plasma",
+      "description": "Ionisation",
+      "api_key": "photoPlasmaStatus"
+    }
+  ],
+  "statistics": {
+    "total_programs": 43,
+    "basic_programs": 2,
+    "standard_programs": 12,
+    "iot_programs": 29,
+    "dry_levels": 4,
+    "options": 5
+  }
+}

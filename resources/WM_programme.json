@@ -1,0 +1,446 @@
+{
+  "appliance_type": "WM",
+  "model": "Haier HW100GBD14979UFR",
+  "description": "Programmes pour lave-linge Haier avec codes prCode et traductions",
+  "last_updated": "2025-08-14",
+  "programs": [
+    {
+      "code": "70",
+      "prCode": "70",
+      "position": null,
+      "name": "Prélavage",
+      "display_name": "Prélavage",
+      "description": "Cycle de prélavage",
+      "api_key": null
+    },
+    {
+      "code": "71",
+      "prCode": "71",
+      "position": null,
+      "name": "Rinçage + Essorage",
+      "display_name": "Rinçage + Essorage",
+      "description": "Rinçage et essorage uniquement",
+      "api_key": "PROGRAMS.WM.HQD_RINSE_SPIN"
+    },
+    {
+      "code": "72",
+      "prCode": "72",
+      "position": null,
+      "name": "Essorage seul",
+      "display_name": "Essorage seul",
+      "description": "Essorage uniquement",
+      "api_key": "PROGRAMS.WM.HQD_SPIN"
+    },
+    {
+      "code": "80",
+      "prCode": "80",
+      "position": 1,
+      "name": "Coton",
+      "display_name": "Coton",
+      "description": "Programme principal coton",
+      "api_key": "PROGRAMS.WM.HQD_COTTON"
+    },
+    {
+      "code": "81",
+      "prCode": "81",
+      "position": 2,
+      "name": "Éco 40-60°C",
+      "display_name": "Éco 40-60°C",
+      "description": "Programme économique",
+      "api_key": "PROGRAMS.WM.HQD_ECO_40_60"
+    },
+    {
+      "code": "82",
+      "prCode": "82",
+      "position": 3,
+      "name": "Coton Éco",
+      "display_name": "Coton Éco",
+      "description": "Coton économique",
+      "api_key": "PROGRAMS.WM.HQD_COTTON_ECO"
+    },
+    {
+      "code": "83",
+      "prCode": "83",
+      "position": 4,
+      "name": "Express 15min",
+      "display_name": "Express 15min",
+      "description": "Lavage rapide 15 minutes",
+      "api_key": "PROGRAMS.WM.HQD_EXPRESS_15"
+    },
+    {
+      "code": "84",
+      "prCode": "84",
+      "position": 5,
+      "name": "Express 30min",
+      "display_name": "Express 30min",
+      "description": "Lavage rapide 30 minutes",
+      "api_key": "PROGRAMS.WM.HQD_EXPRESS_30"
+    },
+    {
+      "code": "85",
+      "prCode": "85",
+      "position": 6,
+      "name": "Express 45min",
+      "display_name": "Express 45min",
+      "description": "Lavage rapide 45 minutes",
+      "api_key": "PROGRAMS.WM.HQD_EXPRESS_45"
+    },
+    {
+      "code": "86",
+      "prCode": "86",
+      "position": 7,
+      "name": "Mixte",
+      "display_name": "Mixte",
+      "description": "Mélange coton/synthétique",
+      "api_key": "PROGRAMS.WM.HQD_MIXED"
+    },
+    {
+      "code": "87",
+      "prCode": "87",
+      "position": 8,
+      "name": "Délicat",
+      "display_name": "Délicat",
+      "description": "Tissus délicats",
+      "api_key": "PROGRAMS.WM.HQD_DELICATE"
+    },
+    {
+      "code": "88",
+      "prCode": "88",
+      "position": 9,
+      "name": "Laine",
+      "display_name": "Laine",
+      "description": "Programme laine",
+      "api_key": "PROGRAMS.WM.HQD_WOOL"
+    },
+    {
+      "code": "89",
+      "prCode": "89",
+      "position": 10,
+      "name": "Lavage à la main",
+      "display_name": "Lavage à la main",
+      "description": "Lavage très délicat",
+      "api_key": "PROGRAMS.WM.HQD_HAND_WASH"
+    },
+    {
+      "code": "90",
+      "prCode": "90",
+      "position": 11,
+      "name": "Délicat Berceau",
+      "display_name": "Délicat Berceau",
+      "description": "Ultra-délicat",
+      "api_key": "PROGRAMS.WM.HQD_DELICATE_CRADLE"
+    },
+    {
+      "code": "91",
+      "prCode": "91",
+      "position": 12,
+      "name": "Soie",
+      "display_name": "Soie",
+      "description": "Programme soie",
+      "api_key": "PROGRAMS.WM.HQD_SILK"
+    },
+    {
+      "code": "100",
+      "prCode": "100",
+      "position": 13,
+      "name": "Hygiène Pro",
+      "display_name": "Hygiène Pro",
+      "description": "Désinfection avancée",
+      "api_key": "PROGRAMS.WM.HQD_HYGIENE_PRO"
+    },
+    {
+      "code": "101",
+      "prCode": "101",
+      "position": 14,
+      "name": "Soin Bébé",
+      "display_name": "Soin Bébé",
+      "description": "Linge de bébé",
+      "api_key": "PROGRAMS.WM.HQD_BABY_CARE"
+    },
+    {
+      "code": "102",
+      "prCode": "102",
+      "position": 15,
+      "name": "Anti-allergène",
+      "display_name": "Anti-allergène",
+      "description": "Pour peaux sensibles",
+      "api_key": "PROGRAMS.WM.HQD_ANTI_ALLERGY"
+    },
+    {
+      "code": "103",
+      "prCode": "103",
+      "position": 16,
+      "name": "Sport",
+      "display_name": "Sport",
+      "description": "Vêtements de sport",
+      "api_key": "PROGRAMS.WM.HQD_SPORT"
+    },
+    {
+      "code": "104",
+      "prCode": "104",
+      "position": 17,
+      "name": "Vêtements actifs",
+      "display_name": "Vêtements actifs",
+      "description": "Textiles techniques",
+      "api_key": "PROGRAMS.WM.HQD_ACTIVE_WEAR"
+    },
+    {
+      "code": "105",
+      "prCode": "105",
+      "position": 18,
+      "name": "Outdoor",
+      "display_name": "Outdoor",
+      "description": "Vêtements d'extérieur",
+      "api_key": "PROGRAMS.WM.HQD_OUTDOOR"
+    },
+    {
+      "code": "106",
+      "prCode": "106",
+      "position": 19,
+      "name": "20°C",
+      "display_name": "20°C",
+      "description": "Lavage à froid",
+      "api_key": "PROGRAMS.WM.HQD_20_DEGREES"
+    },
+    {
+      "code": "107",
+      "prCode": "107",
+      "position": 20,
+      "name": "Chemises",
+      "display_name": "Chemises",
+      "description": "Chemises et vêtements de travail",
+      "api_key": "PROGRAMS.WM.HQD_SHIRTS"
+    },
+    {
+      "code": "108",
+      "prCode": "108",
+      "position": 21,
+      "name": "Jeans",
+      "display_name": "Jeans",
+      "description": "Denim et tissus épais",
+      "api_key": "PROGRAMS.WM.HQD_JEANS"
+    },
+    {
+      "code": "109",
+      "prCode": "109",
+      "position": 22,
+      "name": "Linge foncé",
+      "display_name": "Linge foncé",
+      "description": "Couleurs sombres",
+      "api_key": "PROGRAMS.WM.HQD_DARK_WASH"
+    },
+    {
+      "code": "110",
+      "prCode": "110",
+      "position": 23,
+      "name": "Nettoyage tambour",
+      "display_name": "Nettoyage tambour",
+      "description": "Entretien machine",
+      "api_key": "PROGRAMS.WM.HQD_DRUM_CLEAN"
+    },
+    {
+      "code": "111",
+      "prCode": "111",
+      "position": 24,
+      "name": "Rapide IoT 15min",
+      "display_name": "Rapide IoT 15min",
+      "description": "Cycle connecté express",
+      "api_key": "PROGRAMS.WM.IOT_WASH_RAPID_15"
+    },
+    {
+      "code": "112",
+      "prCode": "112",
+      "position": 25,
+      "name": "Rapide IoT 30min",
+      "display_name": "Rapide IoT 30min",
+      "description": "Cycle connecté rapide",
+      "api_key": "PROGRAMS.WM.IOT_WASH_RAPID_30"
+    },
+    {
+      "code": "113",
+      "prCode": "113",
+      "position": 26,
+      "name": "Rapide IoT 59min",
+      "display_name": "Rapide IoT 59min",
+      "description": "Cycle connecté 59min",
+      "api_key": "PROGRAMS.WM.IOT_WASH_RAPID_59"
+    },
+    {
+      "code": "114",
+      "prCode": "114",
+      "position": 27,
+      "name": "Coton IoT",
+      "display_name": "Coton IoT",
+      "description": "Coton connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_COTTON"
+    },
+    {
+      "code": "115",
+      "prCode": "115",
+      "position": 28,
+      "name": "Synthétique IoT",
+      "display_name": "Synthétique IoT",
+      "description": "Synthétique connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_SYNTHETIC"
+    },
+    {
+      "code": "116",
+      "prCode": "116",
+      "position": 29,
+      "name": "Synthétique et Coloré",
+      "display_name": "Synthétique et Coloré",
+      "description": "Fibres synthétiques colorées",
+      "api_key": "PROGRAMS.WM.HQD_SYNTHETIC_AND_COLOURED"
+    },
+    {
+      "code": "117",
+      "prCode": "117",
+      "position": 30,
+      "name": "Délicat IoT",
+      "display_name": "Délicat IoT",
+      "description": "Délicat connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_DELICATE"
+    },
+    {
+      "code": "118",
+      "prCode": "118",
+      "position": 31,
+      "name": "Laine IoT",
+      "display_name": "Laine IoT",
+      "description": "Laine connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_WOOL"
+    },
+    {
+      "code": "119",
+      "prCode": "119",
+      "position": 32,
+      "name": "Mixte IoT",
+      "display_name": "Mixte IoT",
+      "description": "Mixte connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_MIXED"
+    },
+    {
+      "code": "120",
+      "prCode": "120",
+      "position": 33,
+      "name": "Anti-acariens IoT",
+      "display_name": "Anti-acariens IoT",
+      "description": "Élimination acariens",
+      "api_key": "PROGRAMS.WM.IOT_WASH_ANTI_MITES"
+    },
+    {
+      "code": "121",
+      "prCode": "121",
+      "position": 34,
+      "name": "Anti-odeur IoT",
+      "display_name": "Anti-odeur IoT",
+      "description": "Élimination odeurs",
+      "api_key": "PROGRAMS.WM.IOT_WASH_ANTI_ODOR"
+    },
+    {
+      "code": "122",
+      "prCode": "122",
+      "position": 35,
+      "name": "Coloré IoT",
+      "display_name": "Coloré IoT",
+      "description": "Couleurs vives",
+      "api_key": "PROGRAMS.WM.IOT_WASH_COLORED"
+    },
+    {
+      "code": "123",
+      "prCode": "123",
+      "position": 36,
+      "name": "Soie IoT",
+      "display_name": "Soie IoT",
+      "description": "Soie connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_SILK"
+    },
+    {
+      "code": "124",
+      "prCode": "124",
+      "position": 37,
+      "name": "Sport IoT",
+      "display_name": "Sport IoT",
+      "description": "Sport connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_SPORTS"
+    },
+    {
+      "code": "125",
+      "prCode": "125",
+      "position": 38,
+      "name": "Éco IoT",
+      "display_name": "Éco IoT",
+      "description": "Économique connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_ECO"
+    },
+    {
+      "code": "126",
+      "prCode": "126",
+      "position": 39,
+      "name": "Soin Bébé IoT",
+      "display_name": "Soin Bébé IoT",
+      "description": "Bébé connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_BABY_CARE"
+    },
+    {
+      "code": "127",
+      "prCode": "127",
+      "position": 40,
+      "name": "Hygiène IoT",
+      "display_name": "Hygiène IoT",
+      "description": "Hygiène connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_HYGIENE"
+    },
+    {
+      "code": "128",
+      "prCode": "128",
+      "position": 41,
+      "name": "Soin allergies IoT",
+      "display_name": "Soin allergies IoT",
+      "description": "Allergies connecté",
+      "api_key": "PROGRAMS.WM.IOT_WASH_ALLERGY_CARE"
+    },
+    {
+      "code": "129",
+      "prCode": "129",
+      "position": 42,
+      "name": "Blanc parfait IoT",
+      "display_name": "Blanc parfait IoT",
+      "description": "Blanc éclatant",
+      "api_key": "PROGRAMS.WM.IOT_WASH_PERFECT_WHITE"
+    },
+    {
+      "code": "130",
+      "prCode": "130",
+      "position": 43,
+      "name": "Détachage IoT",
+      "display_name": "Détachage IoT",
+      "description": "Élimination taches",
+      "api_key": "PROGRAMS.WM.IOT_WASH_STAIN_REMOVAL"
+    },
+    {
+      "code": "131",
+      "prCode": "131",
+      "position": 44,
+      "name": "Lavage rapide IoT",
+      "display_name": "Lavage rapide IoT",
+      "description": "Rapide intelligent",
+      "api_key": "PROGRAMS.WM.IOT_WASH_QUICK_WASH"
+    },
+    {
+      "code": "132",
+      "prCode": "132",
+      "position": 45,
+      "name": "Auto IoT",
+      "display_name": "Auto IoT",
+      "description": "Détection automatique",
+      "api_key": "PROGRAMS.WM.IOT_WASH_AUTO"
+    }
+  ],
+  "statistics": {
+    "total_programs": 46,
+    "basic_programs": 3,
+    "standard_programs": 20,
+    "iot_programs": 23
+  }
+}
