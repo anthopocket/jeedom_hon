@@ -6,7 +6,7 @@
         "en_US": "Plugin to control Haier hOn appliances (washing machines, dryers, ovens, etc.)"
     },
     "licence": "AGPL",
-    "author": "Jeedom Community",
+    "author": "anthopocket",
     "require": "4.4",
     "category": "devicecommunication",
     "hasDependency": false,
