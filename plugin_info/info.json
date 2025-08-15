@@ -1,0 +1,47 @@
+{
+    "id": "hon",
+    "name": "hOn",
+    "description": {
+        "fr_FR": "Plugin pour contrôler les appareils électroménagers Haier hOn (machines à laver, sèche-linge)",
+        "en_US": "Plugin to control Haier hOn appliances (washing machines, dryers, ovens, etc.)"
+    },
+    "licence": "AGPL",
+    "author": "Jeedom Community",
+    "require": "4.4",
+    "category": "devicecommunication",
+    "hasDependency": false,
+    "hasOwnDeamon": false,
+    "maxDependancyInstallTime": 30,
+    "changelog": "https://github.com/jeedom/plugin-hon/blob/stable/docs/fr_FR/changelog.md",
+    "documentation": "https://github.com/jeedom/plugin-hon/blob/stable/docs/fr_FR/index.md",
+    "changelog_beta": "https://github.com/jeedom/plugin-hon/blob/beta/docs/fr_FR/changelog.md",
+    "documentation_beta": "https://github.com/jeedom/plugin-hon/blob/beta/docs/fr_FR/index.md",
+    "link": {
+        "forum": "https://community.jeedom.com/tags/plugin-hon",
+        "video": "https://www.youtube.com/watch?v=...",
+        "blog": "https://blog.jeedom.com/tag/hon/"
+    },
+    "language": [
+        "fr_FR",
+        "en_US"
+    ],
+    "compatibility": [
+        "miniplus",
+        "smart",
+        "rpi",
+        "docker",
+        "diy",
+        "mobile",
+        "v4"
+    ],
+    "os": {
+        "min": 11
+    },
+    "version": "1.0.0",
+    "pluginVersion": "1.0.0",
+    "arch": [
+        "amd64",
+        "arm64",
+        "armhf"
+    ]
+}
