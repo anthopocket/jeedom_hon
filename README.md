@@ -8,6 +8,7 @@ Attention je ne propose pas d'assitance en cas d'utilisation de plugin. a vos ri
 Reference des machines testées
 
 WM : Haier HW100GBD14979UFR
+
 TD : Haier HD90-A2959R-FR
 
 Voici des screenshots
