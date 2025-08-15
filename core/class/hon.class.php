@@ -1119,10 +1119,8 @@ private function createMappedInfoCommands() {
         'doorLockStatus' => ['name' => 'Verrouillage porte', 'subtype' => 'binary'],
         'doorStatus' => ['name' => 'État porte', 'subtype' => 'binary'],
         'errors' => ['name' => 'Erreurs', 'subtype' => 'string'],
-        'pause' => ['name' => 'État pause', 'subtype' => 'binary'],
+       // 'pause' => ['name' => 'État pause', 'subtype' => 'binary'],
         'remoteCtrValid' => ['name' => 'Contrôle distant', 'subtype' => 'binary'],
-        'totalElectricityUsed' => ['name' => 'Électricité totale', 'subtype' => 'numeric', 'unit' => 'kWh'],
-        'currentElectricityUsed' => ['name' => 'Électricité actuelle', 'subtype' => 'numeric', 'unit' => 'kWh'],
         'machine_state' => ['name' => 'État machine', 'subtype' => 'string'],
         'connection_status' => ['name' => 'Statut connexion', 'subtype' => 'string'],
         'estimated_end_time' => ['name' => 'Heure fin estimée', 'subtype' => 'string']
@@ -1131,6 +1129,8 @@ private function createMappedInfoCommands() {
     // Commandes spécifiques aux machines à laver (WM) et lave-linge séchant (WD)
     $washingMachineCommands = [
         'temp' => ['name' => 'Température', 'subtype' => 'numeric', 'unit' => '°C'],
+        'totalElectricityUsed' => ['name' => 'Électricité totale', 'subtype' => 'numeric', 'unit' => 'kWh'],
+        'currentElectricityUsed' => ['name' => 'Électricité actuelle', 'subtype' => 'numeric', 'unit' => 'kWh'],
         'spinSpeed' => ['name' => 'Vitesse essorage', 'subtype' => 'numeric', 'unit' => 'rpm'],
         'totalWashCycle' => ['name' => 'Total cycles', 'subtype' => 'numeric'],
         'currentWashCycle' => ['name' => 'Cycle actuel', 'subtype' => 'numeric'],
@@ -1138,24 +1138,24 @@ private function createMappedInfoCommands() {
         'currentWaterUsed' => ['name' => 'Eau actuelle', 'subtype' => 'numeric', 'unit' => 'L'],
         'actualWeight' => ['name' => 'Poids estimé', 'subtype' => 'numeric', 'unit' => 'kg'],
         'autoDetergentStatus' => ['name' => 'Auto lessive', 'subtype' => 'binary'],
-        'autoSoftenerStatus' => ['name' => 'Auto adoucissant', 'subtype' => 'binary'],
-        'sterilizationStatus' => ['name' => 'Stérilisation', 'subtype' => 'binary']
+        'autoSoftenerStatus' => ['name' => 'Auto adoucissant', 'subtype' => 'binary']
+  
     ];
     
     // Commandes spécifiques aux sèche-linge (TD)
     $tumbleDryerCommands = [
-        'temp' => ['name' => 'Température', 'subtype' => 'numeric', 'unit' => '°C'],
-        'totalWashCycle' => ['name' => 'Total cycles', 'subtype' => 'numeric'],
-        'currentWashCycle' => ['name' => 'Cycle actuel', 'subtype' => 'numeric'],
-        'actualWeight' => ['name' => 'Poids estimé', 'subtype' => 'numeric', 'unit' => 'kg'],
-        'dryLevel' => ['name' => 'Niveau séchage', 'subtype' => 'numeric', 'unit' => '%'],
+      //  'temp' => ['name' => 'Température', 'subtype' => 'numeric', 'unit' => '°C'],
+      //  'totalWashCycle' => ['name' => 'Total cycles', 'subtype' => 'numeric'],
+      //  'currentWashCycle' => ['name' => 'Cycle actuel', 'subtype' => 'numeric'],
+       // 'actualWeight' => ['name' => 'Poids estimé', 'subtype' => 'numeric', 'unit' => 'kg'],
+        'dryLevel' => ['name' => 'Niveau séchage', 'subtype' => 'numeric'],
         'sterilizationStatus' => ['name' => 'Stérilisation', 'subtype' => 'binary']
     ];
     
     // Commandes spécifiques aux lave-linge séchant (WD) - combinaison des deux
-    $washDryerCommands = array_merge($washingMachineCommands, [
-        'dryLevel' => ['name' => 'Niveau séchage', 'subtype' => 'numeric', 'unit' => '%']
-    ]);
+  //  $washDryerCommands = array_merge($washingMachineCommands, [
+    //    'dryLevel' => ['name' => 'Niveau séchage', 'subtype' => 'numeric', 'unit' => '%']
+ //   ]);
     
     // Sélectionner les commandes selon le type d'appareil
     $specificCommands = [];
