@@ -5,6 +5,11 @@ inspiration du plugin hOn de home assistant https://github.com/gvigroux/hon
 
 Attention je ne propose pas d'assitance en cas d'utilisation de plugin. a vos risques et périls
 
+Reference des machines testées
+
+WM : Haier HW100GBD14979UFR
+TD : Haier HD90-A2959R-FR
+
 Voici des screenshots
 <img width="1633" height="702" alt="image" src="https://github.com/user-attachments/assets/d0aded53-9e1c-4a86-b653-ceaffaf422d5" />
 
