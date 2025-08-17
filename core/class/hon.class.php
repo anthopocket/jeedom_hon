@@ -1415,7 +1415,6 @@ private function createMappedInfoCommands() {
         // Informations de base
         $replace['#name#'] = $this->getName();
         $replace['#id#'] = $this->getId();
-        $replace['#background-color#'] = $this->getBackgroundColor($_version);
         $replace['#eqLogic_id#'] = $this->getId();
         
         // Informations hOn
