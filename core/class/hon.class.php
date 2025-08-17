@@ -464,7 +464,7 @@ class HonDataExtractor:
         self.appliance_type = appliance_type
         self.key_parameters = {
             "machMode": "machine_mode", "prCode": "program_code", "remainingTimeMM": "remaining_time",
-            "doorLockStatus": "door_lock", "doorStatus": "door_status", "errors": "errors",
+            "doorLockStatus": "door_lock", "doorStatus": "door_status", "errors": "errors","prPhase": "program_phase",
             "temp": "temperature", "spinSpeed": "spin_speed", "totalWashCycle": "total_cycles",
             "currentWashCycle": "current_cycle", "pause": "pause_status", "remoteCtrValid": "remote_control",
             "totalWaterUsed": "total_water_used", "currentWaterUsed": "current_water_used",
@@ -1119,11 +1119,12 @@ private function createMappedInfoCommands() {
         'remainingTimeMM' => ['name' => 'Temps restant', 'subtype' => 'numeric', 'unit' => 'min'],
         'doorLockStatus' => ['name' => 'Verrouillage porte', 'subtype' => 'binary'],
         'doorStatus' => ['name' => 'État porte', 'subtype' => 'binary'],
+         'prPhase' => ['name' => 'Phase programme', 'subtype' => 'numeric'],  # <-- AJOUTER CETTE LIGNE
         'errors' => ['name' => 'Erreurs', 'subtype' => 'string'],
        // 'pause' => ['name' => 'État pause', 'subtype' => 'binary'],
         'remoteCtrValid' => ['name' => 'Contrôle distant', 'subtype' => 'binary'],
         'machine_state' => ['name' => 'État machine', 'subtype' => 'string'],
-        'connection_status' => ['name' => 'Statut connexion', 'subtype' => 'binary'],
+        //'connection_status' => ['name' => 'Statut connexion', 'subtype' => 'binary'],
         'estimated_end_time' => ['name' => 'Heure fin estimée', 'subtype' => 'string']
     ];
     
@@ -1153,10 +1154,7 @@ private function createMappedInfoCommands() {
         'sterilizationStatus' => ['name' => 'Stérilisation', 'subtype' => 'binary']
     ];
     
-    // Commandes spécifiques aux lave-linge séchant (WD) - combinaison des deux
-  //  $washDryerCommands = array_merge($washingMachineCommands, [
-    //    'dryLevel' => ['name' => 'Niveau séchage', 'subtype' => 'numeric', 'unit' => '%']
- //   ]);
+
     
     // Sélectionner les commandes selon le type d'appareil
     $specificCommands = [];
@@ -1415,6 +1413,7 @@ private function createMappedInfoCommands() {
         // Informations de base
         $replace['#name#'] = $this->getName();
         $replace['#id#'] = $this->getId();
+       // $replace['#background-color#'] = $this->getBackgroundColor($_version);
         $replace['#eqLogic_id#'] = $this->getId();
         
         // Informations hOn
@@ -1845,6 +1844,8 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
                 'estimated_weight' => 'actualWeight', 'auto_detergent' => 'autoDetergentStatus',
                 'auto_softener' => 'autoSoftenerStatus', 'dry_level' => 'dryLevel',
                 'sterilization_status' => 'sterilizationStatus', 'status' => 'machine_state',
+                 'program_phase' => 'prPhase',  # <-- AJOUTER CETTE LIGNE
+
                 'connection_status' => 'connection_status', 'estimated_end_time' => 'estimated_end_time'
             ];
             foreach ($data as $pythonKey => $valueData) {
@@ -1856,6 +1857,13 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
                 $cmd = $eqLogic->getCmd(null, $cmdLogicalId);
                 if (is_object($cmd)) {
                     $newValue = $valueData['value'];
+                  
+             // AJOUTEZ CETTE CONVERSION POUR LE STATUT DE CONNEXION
+        if ($pythonKey === 'connection_status') {
+            // Convertir la string "0"/"1" en entier 0/1
+            $newValue = (string)$newValue === "1" ? 1 : 0;
+        }
+                  
                     if ($pythonKey === 'program_code') {
                         $translatedValue = self::translateProgramCode($newValue, $applianceTypeCode);
                         $translatedCmd = $eqLogic->getCmd(null, 'prCodeTranslated');
@@ -1903,6 +1911,116 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
                     }
                 }
             }
+          
+        // pour reset les infos quand la machine n'est pas en pret
+          
+          foreach ($data as $pythonKey => $valueData) {
+   if (isset($keyMapping[$pythonKey])) {
+       $cmdLogicalId = $keyMapping[$pythonKey];
+   } else {
+       // Ignorer les données non mappées (ne plus créer de commandes automatiquement)
+       log::add('hon', 'debug', 'Donnée ignorée (non mappée): ' . $pythonKey . ' pour ' . $eqLogic->getName());
+       continue;
+   }
+   
+   $cmd = $eqLogic->getCmd(null, $cmdLogicalId);
+   
+   if (is_object($cmd)) {
+       $newValue = $valueData['value'];
+       $currentValue = $cmd->execCmd();
+       
+       // Vérifier si la valeur a changé (conversion pour comparaison)
+       if (is_bool($newValue)) {
+           $newValue = $newValue ? 1 : 0;
+       }
+       
+       if ($currentValue != $newValue) {
+           $cmd->event($newValue);
+           $hasUpdates = true;
+           
+           // Log détaillé pour les changements importants
+           if (in_array($pythonKey, ['machine_mode', 'status', 'remaining_time', 'errors', 'program_code'])) {
+               log::add('hon', 'info', 
+                   $eqLogic->getName() . ' - ' . $pythonKey . ' : ' . 
+                   $currentValue . ' → ' . $newValue
+               );
+           } else {
+               log::add('hon', 'debug', 
+                   $eqLogic->getName() . ' - ' . $pythonKey . ' : ' . 
+                   $currentValue . ' → ' . $newValue
+               );
+           }
+       }
+   } else {
+       // Commande non trouvée - mais on ne crée plus automatiquement
+       log::add('hon', 'debug', 'Commande non trouvée: ' . $cmdLogicalId . ' (clé Python: ' . $pythonKey . ') pour ' . $eqLogic->getName());
+   }
+}
+
+// Reset quand machine est "Prêt"
+if (isset($data['status']) && $data['status']['value'] === 'Prêt') {
+   $applianceType = $eqLogic->getConfiguration('applianceType', 'WM');
+   $applianceTypeCode = self::getApplianceTypeCode($applianceType);
+   
+   $commonCommandsToReset = [
+       'remainingTimeMM' => 0,
+       'prCode' => '0',
+       'prCodeTranslated' => ''
+   ];
+   
+   $wmCommandsToReset = [
+       'temp' => 0,
+       'spinSpeed' => 0,
+       'currentWaterUsed' => 0.0,
+       'currentElectricityUsed' => 0.0,
+       'actualWeight' => 0
+   ];
+   
+   $tdCommandsToReset = [
+       'dryLevel' => 0,
+       'dryLevelTranslated' => ''
+   ];
+   
+   $commandsToReset = $commonCommandsToReset;
+   
+   switch ($applianceTypeCode) {
+       case 'WM':
+           $commandsToReset = array_merge($commandsToReset, $wmCommandsToReset);
+           break;
+       case 'TD':
+           $commandsToReset = array_merge($commandsToReset, $tdCommandsToReset);
+           break;
+       case 'WD':
+           $commandsToReset = array_merge($commandsToReset, $wmCommandsToReset, $tdCommandsToReset);
+           break;
+   }
+   
+   foreach ($commandsToReset as $cmdLogicalId => $resetValue) {
+       $cmd = $eqLogic->getCmd(null, $cmdLogicalId);
+       if (is_object($cmd)) {
+           $currentValue = $cmd->execCmd();
+           if ($currentValue != $resetValue) {
+               $cmd->event($resetValue);
+               $hasUpdates = true;
+           }
+       }
+   }
+}
+
+$eqLogic->setConfiguration('lastRefresh', time());
+$eqLogic->save();
+
+if ($hasUpdates) {
+   log::add('hon', 'debug', 'Données mises à jour pour : ' . $eqLogic->getName());
+} else {
+   log::add('hon', 'debug', 'Aucune mise à jour pour : ' . $eqLogic->getName() . ' (' . count($data) . ' valeurs reçues)');
+}
+          
+          
+   // balise de fin rajout le rajout a supprimer si besoin       
+          
+          
+          
             $eqLogic->setConfiguration('lastRefresh', time());
             $eqLogic->save();
         } catch (Exception $e) {
