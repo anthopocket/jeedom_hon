@@ -324,7 +324,7 @@ if ($tokenAge >= 18000) { // 5 heures au lieu de 5h30
                 'dry_level' => 'dryLevel',
                 'sterilization_status' => 'sterilizationStatus',
                 'status' => 'machine_state',
-                'connection_status' => 'connection_status',
+                // 'connection_status' => 'connection_status',
                 'estimated_end_time' => 'estimated_end_time'
             ];
             
