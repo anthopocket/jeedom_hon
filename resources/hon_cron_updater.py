@@ -210,6 +210,7 @@ class HonDataExtractor:
             'totalWashCycle': 'total_cycles',
             'currentWashCycle': 'current_cycle',
             'pause': 'pause_status',
+            'prPhase': 'program_phase',
             'remoteCtrValid': 'remote_control',
             
             # Spécifiques lave-linge
