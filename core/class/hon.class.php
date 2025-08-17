@@ -40,7 +40,7 @@ class hon extends eqLogic {
      */
     public static function cron15() {
         // Contrôler la validité des tokens et refresh automatique à 5h30
-        self::checkTokenValidityAndRefreshAt530();
+        self::checkAndRefreshTokensIfExpired();
     }
 
     /**
@@ -123,7 +123,7 @@ class hon extends eqLogic {
     /**
      * Contrôle la validité des tokens et refresh automatique à 5h30
      */
-    public static function checkTokenValidityAndRefreshAt530() {
+       public static function checkAndRefreshTokensIfExpired() {
         try {
             $lastTokenTime = (int)config::byKey('lastTokenTime', 'hon', 0);
             $currentTime = time();
@@ -135,18 +135,18 @@ class hon extends eqLogic {
                 return;
             }
             
-            // Refresh automatique à 5h30 (19800 secondes)
-            if ($tokenAge >= 19800) {
-                log::add('hon', 'info', 'Tokens âgés de ' . round($tokenAge/3600, 1) . 'h - refresh automatique à 5h30...');
-                
-                $refreshSuccess = self::refreshTokens();
-                if ($refreshSuccess) {
-                    log::add('hon', 'info', 'Refresh automatique des tokens réussi');
-                } else {
-                    log::add('hon', 'error', 'Échec du refresh automatique des tokens à 5h30');
-                }
-                return;
-            }
+// Refresh automatique dès que les tokens sont expirés (plus de 5h)
+if ($tokenAge >= 18000) { // 5 heures au lieu de 5h30
+    log::add('hon', 'info', 'Tokens âgés de ' . round($tokenAge/3600, 1) . 'h - refresh automatique...');
+    
+    $refreshSuccess = self::refreshTokens();
+    if ($refreshSuccess) {
+        log::add('hon', 'info', 'Refresh automatique des tokens réussi');
+    } else {
+        log::add('hon', 'error', 'Échec du refresh automatique des tokens');
+    }
+    return;
+}
             
             // Alertes selon l'âge des tokens (sans refresh)
             if ($tokenAge > 18000) { // Plus de 5 heures
@@ -954,10 +954,11 @@ if __name__ == "__main__":
                 }
             }
             
-            // Tokens expirés ou inexistants - NE PAS REGENERER AUTOMATIQUEMENT
-            log::add('hon', 'warning', 'Tokens expirés ou manquants - refresh manuel requis');
-            return false;
-            
+// Tokens expirés ou inexistants - tenter un refresh automatique
+log::add('hon', 'info', 'Tokens expirés ou manquants - tentative de refresh automatique');
+return false; // Laisser la logique de refresh à refreshAllDevices
+          
+          
         } catch (Exception $e) {
             log::add('hon', 'error', 'Erreur getCachedTokens : ' . $e->getMessage());
             return false;
@@ -1601,10 +1602,18 @@ private function createMappedInfoCommands() {
      */
     private function getDeviceStatusFromAPI($macAddress) {
         try {
-            $tokens = self::getCachedTokens();
-            if (!$tokens) {
-                return false;
-            }
+$tokens = self::getCachedTokens();
+if (!$tokens) {
+    log::add('hon', 'info', 'Tokens expirés - tentative de refresh automatique');
+    $refreshSuccess = self::refreshTokens();
+    if ($refreshSuccess) {
+        $tokens = self::getCachedTokens();
+        log::add('hon', 'info', 'Tokens rafraîchis automatiquement avec succès');
+    } else {
+        log::add('hon', 'warning', 'Échec du refresh automatique des tokens');
+        return;
+    }
+}
             
             // Utiliser un script Python pour récupérer le statut en temps réel
             $resourcesDir = __DIR__ . '/../../resources';
@@ -1631,7 +1640,7 @@ private function createMappedInfoCommands() {
     }
 
     /**
-     * Lance un programme sur l'équipement
+     * Lance un programme sur l'équipement et ou une action pause/resume
      */
     public function launchProgram($programName, $parameters = []) {
         try {
@@ -1756,7 +1765,7 @@ private function createMappedInfoCommands() {
     }
 
 
-
+//Tradcution de certains codes comme programme, drylevel
 private static $translationCache = [];
 
     private static function loadTranslations($applianceType) {
@@ -1900,7 +1909,7 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
         } catch (Exception $e) {
             log::add('hon', 'error', 'Erreur updateDeviceFromQuickDataWithTranslation : ' . $e->getMessage());
         }
-    }
+}
 
     private function createMappedInfoCommandsWithTranslation() {
         $applianceType = $this->getConfiguration('applianceType', '');
@@ -1912,7 +1921,15 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
         }
     }
 
-
+private function createEssentialActionCommands() {
+    // Commande de rafraîchissement
+    $this->createActionCommand('refresh', 'Rafraîchir');
+    
+    // Commandes de contrôle
+    $this->createActionCommand('stop', 'Arrêter');
+    $this->createActionCommand('pause', 'Pause');
+    $this->createActionCommand('resume', 'Reprendre');
+}
 
 
 
