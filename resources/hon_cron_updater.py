@@ -209,9 +209,10 @@ class HonDataExtractor:
             'spinSpeed': 'spin_speed',
             'totalWashCycle': 'total_cycles',
             'currentWashCycle': 'current_cycle',
-            'pause': 'pause_status',
+           # 'pause': 'pause_status',
             'prPhase': 'program_phase',
             'remoteCtrValid': 'remote_control',
+           
             
             # Spécifiques lave-linge
             'totalWaterUsed': 'total_water_used',
@@ -308,13 +309,13 @@ class HonDataExtractor:
             }
         
         # Statut de connexion
-        last_conn = context.get("lastConnEvent", {})
-        is_connected = last_conn.get("category") == "CONNECTED"
-        derived['connection_status'] = {
-            'value': "1" if is_connected else "0",
-            'last_update': last_conn.get("instantTime", datetime.now(timezone.utc).isoformat()),
-            'api_key': 'calculated'
-        }
+      #  last_conn = context.get("lastConnEvent", {})
+      #  is_connected = last_conn.get("category") == "CONNECTED"
+      #  derived['connection_status'] = {
+       #     'value': "1" if is_connected else "0",
+        #    'last_update': last_conn.get("instantTime", datetime.now(timezone.utc).isoformat()),
+        #    'api_key': 'calculated'
+      #  }
         
         return derived
 
