@@ -187,13 +187,19 @@ if ($tokenAge >= 18000) { // 5 heures au lieu de 5h30
         try {
             $resourcesDir = __DIR__ . '/../../resources';
             
-            // S'assurer que le script Python existe
-            $scriptPath = self::ensureCronScript();
-            
-            if (!$scriptPath || !file_exists($scriptPath)) {
-                log::add('hon', 'error', 'Impossible de créer le script de mise à jour');
-                return false;
-            }
+$scriptPath = $resourcesDir . '/hon_cron_updater.py';
+
+// Vérifier que le script Python existe
+if (!file_exists($scriptPath)) {
+    log::add('hon', 'error', 'Script Python non trouvé : ' . $scriptPath);
+    return false;
+}
+
+// Vérifier que le script est exécutable
+if (!is_executable($scriptPath)) {
+    chmod($scriptPath, 0755);
+    log::add('hon', 'info', 'Permissions d\'exécution ajoutées au script Python');
+}
             
             // Mode multi-appareils si plusieurs appareils
             if (count($devices) === 1) {
@@ -384,196 +390,6 @@ if ($tokenAge >= 18000) { // 5 heures au lieu de 5h30
         } catch (Exception $e) {
             log::add('hon', 'error', 'Erreur updateDeviceFromQuickData : ' . $e->getMessage());
         }
-    }
-
-    /**
-     * Crée le script Python optimisé pour le cron s'il n'existe pas
-     */
-    private static function ensureCronScript() {
-        $resourcesDir = __DIR__ . '/../../resources';
-        $scriptPath = $resourcesDir . '/hon_cron_updater.py';
-        
-        if (file_exists($scriptPath)) {
-            return $scriptPath; // Script déjà créé
-        }
-        
-        // Créer le répertoire si nécessaire
-        if (!is_dir($resourcesDir)) {
-            mkdir($resourcesDir, 0755, true);
-        }
-        
-        $pythonScript = '#!/usr/bin/env python3
-"""Script de mise à jour hOn optimisé pour le cron Jeedom - Sans refresh automatique des tokens"""
-import asyncio, aiohttp, json, sys, os
-from datetime import datetime, timezone, timedelta
-from enum import IntEnum
-
-import logging
-logging.basicConfig(level=logging.WARNING)
-_LOGGER = logging.getLogger(__name__)
-
-API_URL = "https://api-iot.he.services"
-OS = "android"
-APP_VERSION = "2.0.10"
-
-class ApplianceType(IntEnum):
-    WASHING_MACHINE = 1
-    TUMBLE_DRYER = 2
-    WASH_DRYER = 3
-
-APPLIANCE_MAPPING = {"WM": ApplianceType.WASHING_MACHINE, "TD": ApplianceType.TUMBLE_DRYER, "WD": ApplianceType.WASH_DRYER}
-
-class HonQuickConnection:
-    def __init__(self, id_token, cognito_token):
-        self._id_token = id_token
-        self._cognito_token = cognito_token
-        self._session = None
-        
-    @property
-    def _headers(self):
-        return {"Content-Type": "application/json", "cognito-token": self._cognito_token, "id-token": self._id_token, "User-Agent": "hOn-Jeedom/1.0"}
-    
-    async def _ensure_session(self):
-        if self._session is None:
-            timeout = aiohttp.ClientTimeout(total=10)
-            self._session = aiohttp.ClientSession(timeout=timeout, connector=aiohttp.TCPConnector(ssl=False, limit=2))
-    
-    async def get_device_status(self, mac_address, appliance_type):
-        await self._ensure_session()
-        params = {"macAddress": mac_address, "applianceType": appliance_type, "category": "CYCLE"}
-        url = f"{API_URL}/commands/v1/context"
-        try:
-            async with self._session.get(url, params=params, headers=self._headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("payload", {})
-                elif response.status == 401:
-                    _LOGGER.warning("Token expiré - refresh manuel requis")
-                    return {}
-                else:
-                    return {}
-        except Exception as e:
-            return {}
-    
-    async def close(self):
-        if self._session:
-            await self._session.close()
-
-class HonDataExtractor:
-    def __init__(self, appliance_type):
-        self.appliance_type = appliance_type
-        self.key_parameters = {
-            "machMode": "machine_mode", "prCode": "program_code", "remainingTimeMM": "remaining_time",
-            "doorLockStatus": "door_lock", "doorStatus": "door_status", "errors": "errors","prPhase": "program_phase",
-            "temp": "temperature", "spinSpeed": "spin_speed", "totalWashCycle": "total_cycles",
-            "currentWashCycle": "current_cycle", "pause": "pause_status", "remoteCtrValid": "remote_control",
-            "totalWaterUsed": "total_water_used", "currentWaterUsed": "current_water_used",
-            "totalElectricityUsed": "total_electricity_used", "currentElectricityUsed": "current_electricity_used",
-            "actualWeight": "estimated_weight", "autoDetergentStatus": "auto_detergent",
-            "autoSoftenerStatus": "auto_softener", "dryLevel": "dry_level", "sterilizationStatus": "sterilization_status"
-        }
-    
-    def extract_essential_data(self, context):
-        if not context or "shadow" not in context or "parameters" not in context["shadow"]:
-            return {}
-        parameters = context["shadow"]["parameters"]
-        extracted = {}
-        for api_key, jeedom_key in self.key_parameters.items():
-            if api_key in parameters:
-                param_data = parameters[api_key]
-                if isinstance(param_data, dict) and "parNewVal" in param_data:
-                    value = param_data["parNewVal"]
-                    last_update = param_data.get("lastUpdate")
-                    converted_value = self._convert_value(api_key, value)
-                    extracted[jeedom_key] = {"value": converted_value, "last_update": last_update, "api_key": api_key}
-        extracted.update(self._calculate_derived_values(extracted, context))
-        return extracted
-    
-    def _convert_value(self, key, value):
-        try:
-            if key in ["remainingTimeMM", "temp", "spinSpeed", "totalWashCycle", "currentWashCycle", "dryLevel", "actualWeight"]:
-                return int(value) if value != "" else 0
-            elif key in ["doorLockStatus", "doorStatus", "pause", "remoteCtrValid", "autoDetergentStatus", "autoSoftenerStatus", "sterilizationStatus"]:
-                return value == "1"
-            elif key in ["totalWaterUsed", "currentWaterUsed", "totalElectricityUsed", "currentElectricityUsed"]:
-                return round(float(value) / 100.0, 2) if value != "" else 0.0
-            else:
-                return str(value)
-        except (ValueError, TypeError):
-            return value
-    
-    def _calculate_derived_values(self, extracted, context):
-        derived = {}
-        if "machine_mode" in extracted:
-            mode = extracted["machine_mode"]["value"]
-            status_map = {0: "Off", 1: "Ready", 2: "Running", 3: "Pause", 4: "Scheduled", 5: "Error", 6: "Finished", 7: "Finished"}
-            derived["status"] = {"value": status_map.get(int(mode), "Unknown"), "last_update": datetime.now(timezone.utc).isoformat(), "api_key": "calculated"}
-        if "remaining_time" in extracted and extracted["remaining_time"]["value"] > 0:
-            end_time = datetime.now(timezone.utc) + timedelta(minutes=extracted["remaining_time"]["value"])
-            derived["estimated_end_time"] = {"value": end_time.isoformat(), "last_update": datetime.now(timezone.utc).isoformat(), "api_key": "calculated"}
-        last_conn = context.get("lastConnEvent", {})
-        is_connected = last_conn.get("category") == "CONNECTED"
-        derived["connection_status"] = {"value": "Connected" if is_connected else "Disconnected", "last_update": last_conn.get("instantTime", datetime.now(timezone.utc).isoformat()), "api_key": "calculated"}
-        return derived
-
-async def update_single_device(connection, device_config):
-    mac_address = device_config["mac_address"]
-    appliance_type = device_config["appliance_type"]
-    try:
-        context = await connection.get_device_status(mac_address, appliance_type)
-        if not context:
-            return {"mac_address": mac_address, "success": False, "error": "No data received"}
-        extractor = HonDataExtractor(appliance_type)
-        extracted_data = extractor.extract_essential_data(context)
-        return {"mac_address": mac_address, "appliance_type": appliance_type, "success": True, "data": extracted_data, "last_update": datetime.now(timezone.utc).isoformat()}
-    except Exception as e:
-        return {"mac_address": mac_address, "success": False, "error": str(e)}
-
-async def main():
-    if len(sys.argv) < 5:
-        print(json.dumps({"success": False, "error": "Arguments manquants"}))
-        return
-    mac_address, appliance_type, id_token, cognito_token = sys.argv[1:5]
-    devices_config = []
-    if len(sys.argv) > 5 and sys.argv[5] == "multi":
-        for i in range(6, len(sys.argv), 2):
-            if i + 1 < len(sys.argv):
-                devices_config.append({"mac_address": sys.argv[i], "appliance_type": sys.argv[i + 1]})
-    else:
-        devices_config.append({"mac_address": mac_address, "appliance_type": appliance_type})
-    
-    connection = HonQuickConnection(id_token, cognito_token)
-    results = []
-    try:
-        # Note: Suppression du refresh automatique des tokens
-        tasks = [update_single_device(connection, config) for config in devices_config]
-        device_results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=30)
-        for result in device_results:
-            results.append(result if not isinstance(result, Exception) else {"success": False, "error": str(result)})
-        final_result = {
-            "success": True, "devices": results, "total_devices": len(devices_config),
-            "successful_updates": len([r for r in results if r.get("success", False)]),
-            "execution_time": datetime.now(timezone.utc).isoformat()
-        }
-        print(json.dumps(final_result, ensure_ascii=False))
-    except asyncio.TimeoutError:
-        print(json.dumps({"success": False, "error": "Timeout", "partial_results": results}))
-    except Exception as e:
-        print(json.dumps({"success": False, "error": f"Erreur: {str(e)}", "partial_results": results}))
-    finally:
-        await connection.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-';
-        
-        // Écrire le script Python
-        file_put_contents($scriptPath, $pythonScript);
-        chmod($scriptPath, 0755);
-        
-        log::add('hon', 'info', 'Script Python de cron créé : ' . $scriptPath);
-        
-        return $scriptPath;
     }
 
     /**
@@ -1119,7 +935,7 @@ private function createMappedInfoCommands() {
         'remainingTimeMM' => ['name' => 'Temps restant', 'subtype' => 'numeric', 'unit' => 'min'],
         'doorLockStatus' => ['name' => 'Verrouillage porte', 'subtype' => 'binary'],
         'doorStatus' => ['name' => 'État porte', 'subtype' => 'binary'],
-         'prPhase' => ['name' => 'Phase programme', 'subtype' => 'numeric'],  # <-- AJOUTER CETTE LIGNE
+        'prPhase' => ['name' => 'Phase programme', 'subtype' => 'numeric'],  # <-- AJOUTER CETTE LIGNE
         'errors' => ['name' => 'Erreurs', 'subtype' => 'string'],
        // 'pause' => ['name' => 'État pause', 'subtype' => 'binary'],
         'remoteCtrValid' => ['name' => 'Contrôle distant', 'subtype' => 'binary'],
@@ -1146,10 +962,7 @@ private function createMappedInfoCommands() {
     
     // Commandes spécifiques aux sèche-linge (TD)
     $tumbleDryerCommands = [
-      //  'temp' => ['name' => 'Température', 'subtype' => 'numeric', 'unit' => '°C'],
-      //  'totalWashCycle' => ['name' => 'Total cycles', 'subtype' => 'numeric'],
-      //  'currentWashCycle' => ['name' => 'Cycle actuel', 'subtype' => 'numeric'],
-       // 'actualWeight' => ['name' => 'Poids estimé', 'subtype' => 'numeric', 'unit' => 'kg'],
+
         'dryLevel' => ['name' => 'Niveau séchage', 'subtype' => 'numeric'],
         'sterilizationStatus' => ['name' => 'Stérilisation', 'subtype' => 'binary']
     ];
@@ -1635,8 +1448,9 @@ if (!$tokens) {
             log::add('hon', 'error', 'Erreur getDeviceStatusFromAPI : ' . $e->getMessage());
             return false;
         }
-    }
+    } 
 
+  //---------------------------------------------------------------------------------------------------------------
     /**
      * Lance un programme sur l'équipement et ou une action pause/resume
      */
@@ -1762,7 +1576,8 @@ if (!$tokens) {
         ];
     }
 
-
+ // --------------------------------------------------------------------------------------------------------------------------------
+  
 //Tradcution de certains codes comme programme, drylevel
 private static $translationCache = [];
 
@@ -1786,6 +1601,8 @@ private static $translationCache = [];
         return $translations;
     }
 
+ 
+  // traduction du programme de valeur numerique à mot
 public static function translateProgramCode($programCode, $applianceType = 'WM') {
     $translations = self::loadTranslations($applianceType);
     if (!$translations || !isset($translations['programs'])) {
@@ -1802,6 +1619,7 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
     return "";  // ← VIDE SI PAS TROUVÉ
 }
 
+  // traduction de drylevel - passage de valeur numerique à mot
     public static function translateDryLevel($dryLevel, $applianceType = 'TD') {
         $translations = self::loadTranslations($applianceType);
         if (!$translations || !isset($translations['dry_levels'])) {
@@ -1818,6 +1636,9 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
         return "Niveau " . $dryLevel;
     }
 
+  //--------------------------------------------------------------------------------------------------------------------------------------
+  
+  
     private static function updateDeviceFromQuickDataWithTranslation($deviceResult) {
         try {
             $macAddress = $deviceResult['mac_address'];
@@ -1844,9 +1665,9 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
                 'estimated_weight' => 'actualWeight', 'auto_detergent' => 'autoDetergentStatus',
                 'auto_softener' => 'autoSoftenerStatus', 'dry_level' => 'dryLevel',
                 'sterilization_status' => 'sterilizationStatus', 'status' => 'machine_state',
-                 'program_phase' => 'prPhase',  # <-- AJOUTER CETTE LIGNE
-
-                'connection_status' => 'connection_status', 'estimated_end_time' => 'estimated_end_time'
+                'program_phase' => 'prPhase',
+                 'estimated_end_time' => 'estimated_end_time'
+               //  'connection_status' => 'connection_status', 
             ];
             foreach ($data as $pythonKey => $valueData) {
                 if (isset($keyMapping[$pythonKey])) {
@@ -1859,10 +1680,10 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
                     $newValue = $valueData['value'];
                   
              // AJOUTEZ CETTE CONVERSION POUR LE STATUT DE CONNEXION
-        if ($pythonKey === 'connection_status') {
+     //   if ($pythonKey === 'connection_status') {
             // Convertir la string "0"/"1" en entier 0/1
-            $newValue = (string)$newValue === "1" ? 1 : 0;
-        }
+       //     $newValue = (string)$newValue === "1" ? 1 : 0;
+      // }
                   
                     if ($pythonKey === 'program_code') {
                         $translatedValue = self::translateProgramCode($newValue, $applianceTypeCode);
@@ -1912,6 +1733,8 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
                 }
             }
           
+          
+    //------------------------------------------------------------------------------------------------------------------------------      
         // pour reset les infos quand la machine n'est pas en pret
           
           foreach ($data as $pythonKey => $valueData) {
@@ -2016,10 +1839,11 @@ if ($hasUpdates) {
    log::add('hon', 'debug', 'Aucune mise à jour pour : ' . $eqLogic->getName() . ' (' . count($data) . ' valeurs reçues)');
 }
           
+      
+  //--------------------------------------------------------------------------------------------------------------------------------------
+          
           
    // balise de fin rajout le rajout a supprimer si besoin       
-          
-          
           
             $eqLogic->setConfiguration('lastRefresh', time());
             $eqLogic->save();
