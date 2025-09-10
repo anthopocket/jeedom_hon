@@ -222,10 +222,16 @@ class HonDataExtractor:
             'actualWeight': 'estimated_weight',
             'autoDetergentStatus': 'auto_detergent',
             'autoSoftenerStatus': 'auto_softener',
+            #ajouts
+            'haier_SoftenerWeight': 'haier_Softener_Weight',
+            'haier_DetergentWeight': 'haier_Detergent_Weight',
+            'remainingMainWashTime': 'remaining_Main_Wash_Time',
             
             # Spécifiques sèche-linge
             'dryLevel': 'dry_level',
-            'sterilizationStatus': 'sterilization_status'
+            'sterilizationStatus': 'sterilization_status',
+            #ajout
+            'dryTimeMM':'dry_Time_MM'
         }
     
     def extract_essential_data(self, context):
@@ -267,7 +273,7 @@ class HonDataExtractor:
             
             # Valeurs booléennes
             elif key in ['doorLockStatus', 'doorStatus', 'pause', 'remoteCtrValid',
-                        'autoDetergentStatus', 'autoSoftenerStatus', 'sterilizationStatus']:
+                        'autoDetergentStatus', 'autoSoftenerStatus', 'sterilizationStatus','dryTimeMM','haier_SoftenerWeight','haier_DetergentWeight','remainingMainWashTime']:
                 return value == "1"
             
             # Valeurs flottantes
