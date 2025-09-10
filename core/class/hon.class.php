@@ -331,7 +331,16 @@ if (!is_executable($scriptPath)) {
                 'sterilization_status' => 'sterilizationStatus',
                 'status' => 'machine_state',
                 // 'connection_status' => 'connection_status',
-                'estimated_end_time' => 'estimated_end_time'
+                // 'estimated_end_time' => 'estimated_end_time',
+               'haier_Softener_Weight' => 'haier_SoftenerWeight',
+              'haier_Detergent_Weight' => 'haier_DetergentWeight',
+              'remaining_Main_Wash_Time' => 'remainingMainWashTime',
+              'dry_Time_MM' => 'dryTimeMM'
+              
+              
+              
+              
+              
             ];
             
             foreach ($data as $pythonKey => $valueData) {
@@ -956,6 +965,9 @@ private function createMappedInfoCommands() {
         'currentWaterUsed' => ['name' => 'Eau actuelle', 'subtype' => 'numeric', 'unit' => 'L'],
         'actualWeight' => ['name' => 'Poids estimé', 'subtype' => 'numeric', 'unit' => 'kg'],
         'autoDetergentStatus' => ['name' => 'Auto lessive', 'subtype' => 'binary'],
+      'haier_SoftenerWeight' => ['name' => 'Poids Adoucissant', 'subtype' => 'numeric'],
+      'haier_DetergentWeight' => ['name' => 'Poids Lessive', 'subtype' => 'numeric'],
+      'remainingMainWashTime' => ['name' => 'Temps Lavage', 'subtype' => 'numeric'],
         'autoSoftenerStatus' => ['name' => 'Auto adoucissant', 'subtype' => 'binary']
   
     ];
@@ -964,6 +976,7 @@ private function createMappedInfoCommands() {
     $tumbleDryerCommands = [
 
         'dryLevel' => ['name' => 'Niveau séchage', 'subtype' => 'numeric'],
+        'dryTimeMM' => ['name' => 'Temps séchage', 'subtype' => 'numeric'],
         'sterilizationStatus' => ['name' => 'Stérilisation', 'subtype' => 'binary']
     ];
     
@@ -1665,7 +1678,8 @@ public static function translateProgramCode($programCode, $applianceType = 'WM')
                 'estimated_weight' => 'actualWeight', 'auto_detergent' => 'autoDetergentStatus',
                 'auto_softener' => 'autoSoftenerStatus', 'dry_level' => 'dryLevel',
                 'sterilization_status' => 'sterilizationStatus', 'status' => 'machine_state',
-                'program_phase' => 'prPhase',
+                'program_phase' => 'prPhase','haier_Softener_Weight' => 'haier_SoftenerWeight',
+              'haier_Detergent_Weight' => 'haier_DetergentWeight', 'remaining_Main_Wash_Time' => 'remainingMainWashTime', 'dry_Time_MM' => 'dryTimeMM',
                  'estimated_end_time' => 'estimated_end_time'
                //  'connection_status' => 'connection_status', 
             ];
