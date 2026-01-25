@@ -1407,26 +1407,35 @@ private function createSelectionWorkflowCommands() {
     $applianceType = $this->getConfiguration('applianceType', '');
     $applianceCode = self::getApplianceTypeCode($applianceType);
 
-    // Température uniquement pour WM/WD
-    if (in_array($applianceCode, ['WM', 'WD'])) {
-        $this->createInfoCommand('desired_temp', 'Température choisie', 'numeric', '°C');
+// Température uniquement pour WM/WD
+if (in_array($applianceCode, ['WM', 'WD'])) {
 
-        $values = [0, 20, 30, 40, 60, 90];
-        $pairs  = array_map(function($v){ return $v . '|' . $v; }, $values);
-        $listValue = implode(';', $pairs);
+    $this->createInfoCommand('desired_temp', 'Température choisie', 'numeric', '°C');
 
-        $setTemp = $this->getCmd(null, 'set_temp');
-        if (!is_object($setTemp)) {
-            $this->createSelectActionCommand('set_temp', 'Régler la température', $values);
-        } else {
-            $setTemp->setType('action');
-            $setTemp->setSubType('select');
-            $setTemp->setIsVisible(1);
-            $setTemp->setName('Régler la température');
-            $setTemp->setConfiguration('listValue', $listValue);
-            $setTemp->save();
-        }
+    $values = [0, 20, 30, 40, 60, 90];
+    $pairs  = array_map(function($v){ return $v . '|' . $v; }, $values);
+    $listValue = implode(';', $pairs);
+
+    $setTemp = $this->getCmd(null, 'set_temp');
+    if (!is_object($setTemp)) {
+        $this->createSelectActionCommand('set_temp', 'Régler la température', $values);
+        $setTemp = $this->getCmd(null, 'set_temp'); // <-- important: recharger l'objet
+    } else {
+        $setTemp->setType('action');
+        $setTemp->setSubType('select');
+        $setTemp->setIsVisible(1);
+        $setTemp->setName('Régler la température');
+        $setTemp->setConfiguration('listValue', $listValue);
+        $setTemp->save();
     }
+
+    // ✅ Lier la valeur affichée du widget set_temp à desired_temp
+    $desired = $this->getCmd(null, 'desired_temp');
+    if (is_object($desired) && is_object($setTemp)) {
+        $setTemp->setValue($desired->getId());
+        $setTemp->save();
+    }
+}
 }
 
 
@@ -1668,6 +1677,35 @@ class honCmd extends cmd {
                     $name     = $root['display_name'] ?? $root['displayName'] ?? $root['name'] ?? $programName;
                     $duration = $readParam($params, ['duration','durationMM','durationMin']);
                     $temp     = $readParam($params, ['temperature','temp']);
+                  
+                  
+                  // ✅ Appliquer la spec temp (slider/select) pour ce programme
+if (method_exists($eqLogic, 'applyTempSpecForProgram')) {
+    $eqLogic->applyTempSpecForProgram($programName);
+}
+
+// ✅ Mettre la température du programme dans desired_temp (et donc dans le widget)
+$desired = $eqLogic->getCmd(null, 'desired_temp');
+if (is_object($desired)) {
+    if ($temp !== null && $temp !== '') {
+        $t = is_numeric($temp) ? (0 + $temp) : $temp;
+
+        // Normaliser si possible (au cas où temp n'est pas exactement dans la spec)
+        if (is_numeric($t) && method_exists($eqLogic, 'getTempSpecForProgram') && method_exists($eqLogic, 'normalizeTempToSpec')) {
+            $spec = $eqLogic->getTempSpecForProgram($programName);
+            if ($spec) $t = $eqLogic->normalizeTempToSpec($t, $spec);
+        }
+
+        $desired->event($t);
+        log::add('hon', 'info', "Température programme → desired_temp = {$t}");
+    } else {
+        // pas de temp trouvée => on laisse vide (temp standard)
+        $desired->event('');
+    }
+}
+                  
+                  
+
                     $spin     = $readParam($params, ['spinSpeed','spin']);
                     $autoDet  = $readParam($params, ['autoDetergentStatus','autoDetergent']);
                     $autoSoft = $readParam($params, ['autoSoftenerStatus','autoSoftener']);
@@ -1675,7 +1713,7 @@ class honCmd extends cmd {
                     $lines[] = $name;
              if ($temp !== null && $temp !== '') {
 
-    $tempLine = 'Température : ' . $temp . '°C';
+    $tempLine = 'Temp : ' . $temp . '°C';
 
     // Ajouter les températures possibles entre parenthèses
     if (method_exists($eqLogic, 'getTempSpecForProgram')) {
@@ -1692,7 +1730,7 @@ class honCmd extends cmd {
                 };
 
                 $tempLine .= ' (' .
-                             $fmt($min) . ' à ' . $fmt($max) . '°C, pas ' . $fmt($step) .
+                             $fmt($min) . ' à ' . $fmt($max) . ', pas ' . $fmt($step) .
                              ')';
 
             } elseif (($spec['kind'] ?? '') === 'enum' && !empty($spec['values'])) {
@@ -1700,7 +1738,7 @@ class honCmd extends cmd {
                     return (is_numeric($v) && floor($v) == $v) ? (string)(int)$v : (string)$v;
                 }, $spec['values']);
 
-                $tempLine .= ' (' . implode(', ', $vals) . ' °C)';
+                $tempLine .= ' (' . implode(', ', $vals) . ')';
             }
         }
     }
@@ -1750,7 +1788,9 @@ class honCmd extends cmd {
             }
 
             $infoSummary = $eqLogic->getCmd(null, 'selectedProgramInfo');
-            if (is_object($infoSummary)) $infoSummary->event(implode('<br>', $lines));
+           // if (is_object($infoSummary)) $infoSummary->event(implode('<br>', $lines));
+          if (is_object($infoSummary)) $infoSummary->event(implode("\n", $lines));
+
             log::add('hon', 'info', '=== Fin sélection programme ===');
 
         } else {
