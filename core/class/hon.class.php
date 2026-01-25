@@ -1405,7 +1405,7 @@ private function createSelectionWorkflowCommands() {
 
     // Type d’appareil
     $applianceType = $this->getConfiguration('applianceType', '');
-    $applianceCode = self::getAppliancaeTypeCode($applianceType);
+    $applianceCode = self::getApplianceTypeCode($applianceType);
 
     // Température uniquement pour WM/WD
     if (in_array($applianceCode, ['WM', 'WD'])) {
