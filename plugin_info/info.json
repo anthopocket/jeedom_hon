@@ -10,7 +10,7 @@
     "require": "4.4",
     "category": "devicecommunication",
     "hasDependency": false,
-    "hasOwnDeamon": false,
+    "hasOwnDeamon": true,
     "maxDependancyInstallTime": 30,
     "changelog": "https://github.com/jeedom/plugin-hon/blob/stable/docs/fr_FR/changelog.md",
     "documentation": "https://github.com/jeedom/plugin-hon/blob/stable/docs/fr_FR/index.md",

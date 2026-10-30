@@ -226,6 +226,9 @@ class HonDataExtractor:
             'haier_SoftenerWeight': 'haier_Softener_Weight',
             'haier_DetergentWeight': 'haier_Detergent_Weight',
             'remainingMainWashTime': 'remaining_Main_Wash_Time',
+            # Alertes réservoirs auto-dosage (sens à confirmer)
+            'detWarn': 'det_warn',
+            'softWarn': 'soft_warn',
             
             # Spécifiques sèche-linge
             'dryLevel': 'dry_level',
@@ -268,12 +271,13 @@ class HonDataExtractor:
         try:
             # Valeurs numériques
             if key in ['remainingTimeMM', 'temp', 'spinSpeed', 'totalWashCycle', 
-                      'currentWashCycle', 'dryLevel', 'actualWeight']:
+                      'currentWashCycle', 'dryLevel', 'actualWeight', 'detWarn', 'softWarn',
+                      'dryTimeMM', 'haier_SoftenerWeight', 'haier_DetergentWeight', 'remainingMainWashTime']:
                 return int(value) if value != '' else 0
             
             # Valeurs booléennes
             elif key in ['doorLockStatus', 'doorStatus', 'pause', 'remoteCtrValid',
-                        'autoDetergentStatus', 'autoSoftenerStatus', 'sterilizationStatus','dryTimeMM','haier_SoftenerWeight','haier_DetergentWeight','remainingMainWashTime']:
+                        'autoDetergentStatus', 'autoSoftenerStatus', 'sterilizationStatus']:
                 return value == "1"
             
             # Valeurs flottantes

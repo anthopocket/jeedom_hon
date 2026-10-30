@@ -32,10 +32,14 @@ class hon extends eqLogic {
         self::checkAndRefreshTokensIfExpired();
     }
 
-    /** Rafraîchit les données de tous les équipements hon */
-    public static function refreshAllDevices() {
+    /**
+     * Interroge hOn (hon_cron_updater.py) et met à jour les commandes info.
+     * Sans argument : tous les équipements actifs non rafraîchis depuis 45 s (cron).
+     * Avec un équipement : cet équipement uniquement, immédiatement (bouton Rafraîchir).
+     */
+    public static function refreshAllDevices($_eqLogic = null) {
         try {
-            $eqLogics = eqLogic::byType('hon', true);
+            $eqLogics = ($_eqLogic === null) ? eqLogic::byType('hon', true) : [$_eqLogic];
             if (!is_array($eqLogics) || empty($eqLogics)) return;
 
             $tokens = self::getCachedTokens();
@@ -44,12 +48,19 @@ class hon extends eqLogic {
                 return;
             }
 
+            // Push actif : le cron ne sert plus que de filet de sécurité (toutes les 10 min)
+            $minAge = 45;
+            if ($_eqLogic === null) {
+                $daemon = self::deamon_info();
+                if ($daemon['state'] == 'ok') $minAge = 600;
+            }
+
             $devices = [];
             foreach ($eqLogics as $eqLogic) {
                 if ($eqLogic->getIsEnable()) {
                     $lastRefresh = (int)$eqLogic->getConfiguration('lastRefresh', 0);
                     $currentTime = time();
-                    if (($currentTime - $lastRefresh) >= 45) {
+                    if ($_eqLogic !== null || ($currentTime - $lastRefresh) >= $minAge) {
                         $macAddress = $eqLogic->getConfiguration('macAddress');
                         $macAddress = str_replace(':', '-', $macAddress);
                         $devices[] = [
@@ -82,6 +93,118 @@ class hon extends eqLogic {
         }
     }
 
+    /* ========================= Démon push ========================= */
+
+    public static function deamon_info() {
+        $return = ['log' => 'hon', 'state' => 'nok', 'launchable' => 'ok'];
+        $pidFile = jeedom::getTmpFolder(__CLASS__) . '/deamon.pid';
+        if (file_exists($pidFile)) {
+            if (@posix_getsid(intval(trim(file_get_contents($pidFile))))) {
+                $return['state'] = 'ok';
+            } else {
+                @unlink($pidFile);
+            }
+        }
+        if (config::byKey('email', __CLASS__) == '' || config::byKey('password', __CLASS__) == '') {
+            $return['launchable'] = 'nok';
+            $return['launchable_message'] = __('Email et mot de passe hOn non configurés', __FILE__);
+        }
+        return $return;
+    }
+
+    public static function deamon_start() {
+        self::deamon_stop();
+        $info = self::deamon_info();
+        if ($info['launchable'] != 'ok') {
+            throw new Exception(__('Veuillez vérifier la configuration', __FILE__));
+        }
+        $script = realpath(__DIR__ . '/../../resources/hond/hond.py');
+        $cmd = 'python3 -u ' . escapeshellarg($script)
+             . ' --loglevel ' . escapeshellarg(log::convertLogLevel(log::getLogLevel(__CLASS__)))
+             . ' --callback ' . escapeshellarg(network::getNetworkAccess('internal', 'http:127.0.0.1:port:comp') . '/plugins/hon/core/php/jeeHon.php')
+             . ' --apikey ' . escapeshellarg(jeedom::getApiKey(__CLASS__))
+             . ' --pid ' . escapeshellarg(jeedom::getTmpFolder(__CLASS__) . '/deamon.pid');
+        log::add(__CLASS__, 'info', 'Lancement du démon push hOn');
+        exec($cmd . ' >> ' . log::getPathToLog('hon') . ' 2>&1 &');
+
+        for ($i = 0; $i < 20; $i++) {
+            if (self::deamon_info()['state'] == 'ok') return true;
+            sleep(1);
+        }
+        log::add(__CLASS__, 'error', __('Impossible de lancer le démon push, consultez le log hon', __FILE__), 'unableStartDeamon');
+        return false;
+    }
+
+    public static function deamon_stop() {
+        $pidFile = jeedom::getTmpFolder(__CLASS__) . '/deamon.pid';
+        if (file_exists($pidFile)) {
+            $pid = intval(trim(file_get_contents($pidFile)));
+            if ($pid > 0) posix_kill($pid, 15);
+            sleep(1);
+            @unlink($pidFile);
+        }
+        system::kill('hond.py');
+    }
+
+    /** Configuration envoyée au démon : jetons + appareils et sujets MQTT */
+    public static function getDaemonConfig() {
+        $tokens = self::getCachedTokens();
+        if (!$tokens && self::refreshTokens()) $tokens = self::getCachedTokens();
+        if (!$tokens) return ['error' => 'jetons hOn indisponibles'];
+
+        $dataDir = config::byKey('dataDir', __CLASS__, __DIR__ . '/../../resources/hon/data');
+        $devices = [];
+        foreach (eqLogic::byType(__CLASS__, true) as $eqLogic) {
+            $mac = str_replace(':', '-', $eqLogic->getConfiguration('macAddress', ''));
+            if ($mac === '') continue;
+            $topics = [];
+            $deviceFile = $dataDir . '/device_' . $mac . '.json';
+            if (file_exists($deviceFile)) {
+                $json   = json_decode(file_get_contents($deviceFile), true);
+                $topics = $json['device_identification']['raw_appliance_data']['topics']['subscribe'] ?? [];
+            }
+            if (empty($topics)) {
+                $topics = [
+                    'haier/things/' . $mac . '/event/appliancestatus/update',
+                    '$aws/events/presence/connected/' . $mac,
+                    '$aws/events/presence/disconnected/' . $mac,
+                ];
+            }
+            $devices[] = [
+                'mac'    => $mac,
+                'type'   => self::getApplianceTypeCode($eqLogic->getConfiguration('applianceType')),
+                'topics' => array_values($topics),
+            ];
+        }
+        return [
+            'id_token'      => $tokens['id_token'],
+            'cognito_token' => $tokens['cognito_token'],
+            'mobile_id'     => $tokens['mobile_id'] ?? '',
+            'devices'       => $devices,
+        ];
+    }
+
+    /** Mise à jour reçue du démon push (même format que le cron) */
+    public static function pushUpdate($payload) {
+        log::add(__CLASS__, 'debug', 'Push reçu : ' . json_encode($payload));
+
+        // État avant mise à jour (pour détecter un démarrage de cycle)
+        $mac     = $payload['mac_address'];
+        $eqLogic = self::byLogicalId($mac, __CLASS__) ?: self::byLogicalId(str_replace('-', ':', $mac), __CLASS__);
+        $stateCmd = is_object($eqLogic) ? $eqLogic->getCmd(null, 'machine_state') : null;
+        $before   = is_object($stateCmd) ? $stateCmd->execCmd() : '';
+
+        self::updateDeviceFromQuickDataWithTranslation($payload);
+
+        // Le push n'envoie que ce qui change : au démarrage d'un cycle, lecture complète
+        // pour récupérer les valeurs identiques au cycle précédent (température, etc.)
+        $after = $payload['data']['status']['value'] ?? null;
+        if (is_object($eqLogic) && $after === 'En cours' && $before !== 'En cours') {
+            log::add(__CLASS__, 'debug', 'Début de cycle détecté → lecture complète de ' . $eqLogic->getName());
+            self::refreshAllDevices($eqLogic);
+        }
+    }
+
     /** Contrôle la validité des tokens et refresh automatique à 5h */
     public static function checkAndRefreshTokensIfExpired() {
         try {
@@ -102,13 +225,7 @@ class hon extends eqLogic {
                 return;
             }
 
-            if ($tokenAge > 18000) {
-                log::add('hon', 'info', 'Tokens âgés de ' . round($tokenAge/3600, 1) . 'h - refresh bientôt');
-            } elseif ($tokenAge > 14400) {
-                log::add('hon', 'debug', 'Tokens âgés de ' . round($tokenAge/3600, 1) . 'h - encore valides');
-            } else {
-                log::add('hon', 'debug', 'Tokens valides (âge: ' . round($tokenAge/3600, 1) . 'h)');
-            }
+            log::add('hon', 'debug', 'Tokens valides (âge: ' . round($tokenAge/3600, 1) . 'h)');
 
             $cachedIdToken      = config::byKey('cachedIdToken', 'hon');
             $cachedCognitoToken = config::byKey('cachedCognitoToken', 'hon');
@@ -159,7 +276,8 @@ class hon extends eqLogic {
                 log::add('hon', 'warning', 'Aucune sortie du script de mise à jour');
                 return false;
             }
-            log::add('hon', 'debug', 'Sortie complète script : ' . $output);
+            // Sortie du script en debug, sans les jetons
+            log::add('hon', 'debug', 'Sortie complète script : ' . preg_replace('/"(updated_cognito_token|cognito_token)":\s*"[^"]*"/', '"$1": "***"', $output));
 
             $lines    = explode("\n", trim($output));
             $jsonLine = null;
@@ -195,17 +313,6 @@ class hon extends eqLogic {
             'WD'              => 'WD', // si tu as un lave-linge séchant
         ];
         return $typeMapping[$applianceType] ?? 'WM';
-    }
-
-    /** Vérifie l'expiration des tokens et les régénère si nécessaire */
-    public static function checkTokenExpiration() {
-        $lastTokenTime = config::byKey('lastTokenTime', 'hon', 0);
-        $currentTime   = time();
-        if (($currentTime - $lastTokenTime) > 19800) {
-            log::add('hon', 'info', 'Tokens expirés (> 5h30) - refresh automatique nécessaire');
-            return self::refreshTokens();
-        }
-        return true;
     }
 
     /** Force la régénération des tokens */
@@ -469,7 +576,7 @@ class hon extends eqLogic {
         $cmd    = 'cd ' . escapeshellarg(__DIR__ . '/../../resources') . ' && python3 hon_get_tokens.py ' .
                   escapeshellarg($email) . ' ' . escapeshellarg($password);
         $output = shell_exec($cmd . ' 2>&1');
-        log::add('hon', 'debug', 'Sortie tokens : ' . $output);
+        log::add('hon', 'debug', 'Sortie tokens : ' . preg_replace('/"(id_token|cognito_token)":\s*"[^"]*"/', '"$1": "***"', $output));
         $tokens = json_decode($output, true);
         if (!is_array($tokens) || !isset($tokens['id_token']) || !isset($tokens['cognito_token'])) {
             log::add('hon', 'error', 'Format de tokens invalide : ' . $output);
@@ -546,9 +653,10 @@ class hon extends eqLogic {
         log::add('hon', 'debug', 'Création commandes pour ' . $this->getName() . ' dans ' . $dataDir);
 
         $this->createMappedInfoCommandsWithTranslation();
-        $this->createActionCommandsFromPrograms($dataDir, $macFilename);
         $this->createEssentialActionCommands();
-        $this->createSelectionWorkflowCommands(); // ici, création conditionnelle de set_temp pour WM/WD
+        $this->createSelectionWorkflowCommands($dataDir);
+        $this->buildPrCodeMap($dataDir);
+        $this->save();
 
         log::add('hon', 'info', 'Commandes créées pour ' . $this->getName());
     }
@@ -585,7 +693,9 @@ class hon extends eqLogic {
             'haier_SoftenerWeight'   => ['name' => 'Poids Adoucissant',       'subtype' => 'numeric'],
             'haier_DetergentWeight'  => ['name' => 'Poids Lessive',           'subtype' => 'numeric'],
             'remainingMainWashTime'  => ['name' => 'Temps Lavage',            'subtype' => 'numeric'],
-            'autoSoftenerStatus'     => ['name' => 'Auto adoucissant',        'subtype' => 'binary']
+            'autoSoftenerStatus'     => ['name' => 'Auto adoucissant',        'subtype' => 'binary'],
+            'detWarn'                => ['name' => 'Alerte lessive',          'subtype' => 'binary'],   // 0 = OK, 1 = alarme
+            'softWarn'               => ['name' => 'Alerte adoucissant',      'subtype' => 'binary']    // 0 = OK, 1 = alarme
         ];
 
         $td = [
@@ -603,109 +713,16 @@ class hon extends eqLogic {
 
         foreach ($info as $logicalId => $cfg) {
             $this->createInfoCommand($logicalId, $cfg['name'], $cfg['subtype'], $cfg['unit'] ?? '');
+            // Corrige le sous-type d'une commande déjà créée (ex. alertes passées de numérique à binaire)
+            $cmd = $this->getCmd(null, $logicalId);
+            if (is_object($cmd) && $cmd->getSubType() != $cfg['subtype']) {
+                $cmd->setSubType($cfg['subtype']);
+                $cmd->save();
+            }
         }
         log::add('hon', 'info', count($info) . ' commandes info créées pour ' . $this->getName());
     }
 
-    /** Crée les commandes d'action depuis les programmes (sélection) */
-    private function createActionCommandsFromPrograms($dataDir, $macFilename) {
-        try {
-            $patterns = [
-                $dataDir . '/' . $macFilename . '_*.json',
-                $dataDir . '/*' . str_replace('-', '_', $macFilename) . '*.json',
-                $dataDir . '/*' . str_replace('-', '', $macFilename) . '*.json'
-            ];
-            $programFiles = [];
-            foreach ($patterns as $pattern) {
-                $files = glob($pattern);
-                if (!empty($files)) {
-                    $programFiles = array_merge($programFiles, $files);
-                    log::add('hon', 'debug', 'Programmes trouvés avec pattern: ' . $pattern);
-                    break;
-                }
-            }
-            if (empty($programFiles)) {
-                log::add('hon', 'warning', 'Aucun programme trouvé pour ' . $macFilename);
-                $allFiles = glob($dataDir . '/*.json');
-                log::add('hon', 'debug', 'Fichiers disponibles: ' . implode(', ', array_map('basename', $allFiles)));
-                return;
-            }
-
-            $programsCreated = 0;
-            foreach ($programFiles as $programFile) {
-                $content     = file_get_contents($programFile);
-                $programData = json_decode($content, true);
-                if (!$programData) {
-                    log::add('hon', 'warning', 'JSON invalide dans: ' . basename($programFile));
-                    continue;
-                }
-
-                $programName = '';
-                $displayName = '';
-
-                if (isset($programData['program_info'])) {
-                    $programInfo = $programData['program_info'];
-                    $programName = $programInfo['name'] ?? '';
-                    $displayName = $programInfo['display_name'] ?? $programInfo['displayName'] ?? $programName;
-                } elseif (isset($programData['program'])) {
-                    $programInfo = $programData['program'];
-                    $programName = $programInfo['name'] ?? '';
-                    $displayName = $programInfo['display_name'] ?? $programInfo['displayName'] ?? $programName;
-                } elseif (isset($programData['name'])) {
-                    $programName = $programData['name'];
-                    $displayName = $programData['display_name'] ?? $programData['displayName'] ?? $programName;
-                } else {
-                    $fileName = basename($programFile, '.json');
-                    $parts    = explode('_', $fileName);
-                    if (count($parts) > 1) {
-                        array_shift($parts);
-                        $programName = implode('_', $parts);
-                        $displayName = ucwords(str_replace('_', ' ', $programName));
-                    } else {
-                        $programName = $fileName;
-                        $displayName = $programName;
-                    }
-                }
-
-                if (empty($programName)) {
-                    log::add('hon', 'warning', 'Nom de programme vide dans: ' . basename($programFile));
-                    continue;
-                }
-
-                $cleanProgramName = preg_replace('/[^a-zA-Z0-9_]/', '_', $programName);
-                $cleanProgramName = trim($cleanProgramName, '_');
-                if (empty($cleanProgramName)) {
-                    log::add('hon', 'warning', 'Nom de programme invalide après nettoyage: ' . $programName);
-                    continue;
-                }
-
-                $logicalId   = 'select_' . $cleanProgramName;
-                $existingCmd = $this->getCmd(null, $logicalId);
-                if (is_object($existingCmd)) {
-                    log::add('hon', 'debug', 'Commande sélection déjà existante: ' . $displayName);
-                    continue;
-                }
-
-                $cmd = new honCmd();
-                $cmd->setLogicalId($logicalId);
-                $cmd->setEqLogic_id($this->getId());
-                $cmd->setName('Sélectionner ' . $displayName);
-                $cmd->setType('action');
-                $cmd->setSubType('other');
-                $cmd->setConfiguration('program', $programName);
-                $cmd->setIsVisible(1);
-                $cmd->save();
-
-                $programsCreated++;
-                log::add('hon', 'info', 'Commande de sélection créée: ' . $displayName . ' (' . $programName . ')');
-            }
-
-            log::add('hon', 'info', $programsCreated . ' commandes de sélection créées pour ' . $this->getName());
-
-        } catch (Exception $e) {
-            log::add('hon', 'error', 'Erreur création commandes programmes : ' . $e->getMessage());
-        }
-    }
 
     /** Crée une commande d'information */
     private function createInfoCommand($logicalId, $name, $subtype, $unit = '') {
@@ -737,45 +754,6 @@ class hon extends eqLogic {
         $cmd->setSubType('other');
         if (!empty($program)) $cmd->setConfiguration('program', $program);
         $cmd->setIsVisible(1);
-        $cmd->save();
-    }
-
-    /** Helper : slider d’action (range) */
-    private function createSliderActionCommand($logicalId, $name, $min = 0, $max = 100, $step = 1) {
-        $cmd = $this->getCmd(null, $logicalId);
-        if (is_object($cmd)) return;
-
-        $cmd = new honCmd();
-        $cmd->setLogicalId($logicalId);
-        $cmd->setEqLogic_id($this->getId());
-        $cmd->setName($name);
-        $cmd->setType('action');
-        $cmd->setSubType('slider');
-        $cmd->setIsVisible(1);
-        $cmd->setConfiguration('minValue', strval($min));
-        $cmd->setConfiguration('maxValue', strval($max));
-        $cmd->setConfiguration('step',    strval($step));
-        $cmd->save();
-    }
-
-    /** Helper : select d’action (enum) */
-    private function createSelectActionCommand($logicalId, $name, $values = []) {
-        $cmd = $this->getCmd(null, $logicalId);
-        if (is_object($cmd)) return;
-
-        $cmd = new honCmd();
-        $cmd->setLogicalId($logicalId);
-        $cmd->setEqLogic_id($this->getId());
-        $cmd->setName($name);
-        $cmd->setType('action');
-        $cmd->setSubType('select');
-        $cmd->setIsVisible(1);
-
-        $pairs = array_map(function($v){
-            $n = is_numeric($v) ? 0 + $v : $v;
-            return $n . '|' . $n;
-        }, $values);
-        $cmd->setConfiguration('listValue', implode(';', $pairs));
         $cmd->save();
     }
 
@@ -824,129 +802,157 @@ class hon extends eqLogic {
         return $this->postToHtml($_version, template_replace($replace, getTemplate('core', $version, 'hon', 'hon')));
     }
 
-    /** Rafraîchit les informations de l'équipement */
+    /** Rafraîchit immédiatement cet équipement depuis hOn */
     public function refreshInfo() {
-        try {
-            $macAddress = $this->getConfiguration('macAddress');
-            if (empty($macAddress)) return;
-
-            $lastRefresh = (int)$this->getConfiguration('lastRefresh', 0);
-            $currentTime = time();
-            if (($currentTime - $lastRefresh) < 55) return;
-
-            $statusData = $this->getDeviceStatus($macAddress);
-            if ($statusData && is_array($statusData)) {
-                $hasUpdates = false;
-                foreach ($statusData as $key => $value) {
-                    $cmd = $this->getCmd(null, $key);
-                    if (is_object($cmd)) {
-                        if (is_bool($value)) $value = $value ? 1 : 0;
-                        $currentValue = $cmd->execCmd();
-                        if ($currentValue != $value) {
-                            $cmd->event($value);
-                            $hasUpdates = true;
-                        }
-                    }
-                }
-                $this->setConfiguration('lastRefresh', $currentTime);
-                $this->save();
-                if ($hasUpdates) log::add('hon', 'info', 'Données mises à jour pour : ' . $this->getName());
-            }
-
-        } catch (Exception $e) {
-            log::add('hon', 'error', 'Erreur lors du rafraîchissement de ' . $this->getName() . ' : ' . $e->getMessage());
-        }
+        self::refreshAllDevices($this);
     }
 
-    /** Récupère le statut d'un appareil (fichiers ou API) */
-    private function getDeviceStatus($macAddress) {
-        try {
-            $dataDir     = config::byKey('dataDir', 'hon', __DIR__ . '/../../resources/hon/data');
-            $macFilename = str_replace(':', '-', $macAddress);
-            $deviceFile  = $dataDir . '/device_' . $macFilename . '.json';
-
-            if (file_exists($deviceFile)) {
-                $content   = file_get_contents($deviceFile);
-                $deviceData= json_decode($content, true);
-                if ($deviceData) {
-                    $statusData = [];
-                    if (isset($deviceData['current_state']['context']['shadow']['parameters'])) {
-                        $parameters = $deviceData['current_state']['context']['shadow']['parameters'];
-                        foreach ($parameters as $key => $paramData) {
-                            if (is_array($paramData) && isset($paramData['parNewVal'])) {
-                                $value = $paramData['parNewVal'];
-                                if (is_numeric($value)) $value = is_float($value + 0) ? (float)$value : (int)$value;
-                                $statusData[$key] = $value;
-                            }
-                        }
-                    } elseif (isset($deviceData['current_state'])) {
-                        $statusData = $deviceData['current_state'];
-                    }
-
-                    if (isset($deviceData['device_identification']['extracted_info'])) {
-                        $deviceInfo = $deviceData['device_identification']['extracted_info'];
-                        foreach ($deviceInfo as $key => $value) {
-                            if (is_scalar($value)) $statusData['device_' . $key] = $value;
-                        }
-                    }
-                    if (isset($deviceData['connectivity'])) {
-                        $connectivity = $deviceData['connectivity'];
-                        foreach ($connectivity as $key => $value) {
-                            if (is_scalar($value)) $statusData['conn_' . $key] = $value;
-                        }
-                    }
-                    if (isset($deviceData['current_state']['statistics'])) {
-                        $statistics = $deviceData['current_state']['statistics'];
-                        if (isset($statistics['programsCounter'])) $statusData['programs_counter'] = $statistics['programsCounter'];
-                        if (isset($statistics['temperatureUsage'])) {
-                            foreach ($statistics['temperatureUsage'] as $tempKey => $tempValue) {
-                                $statusData['stat_' . $tempKey] = $tempValue;
-                            }
-                        }
-                    }
-                    return $statusData;
-                }
-            }
-            return $this->getDeviceStatusFromAPI($macAddress);
-
-        } catch (Exception $e) {
-            log::add('hon', 'error', 'Erreur getDeviceStatus : ' . $e->getMessage());
-            return false;
-        }
+    /**
+     * Rafraîchissements différés en arrière-plan (sans bloquer Jeedom),
+     * le temps que la machine remonte son nouvel état à hOn.
+     */
+    public function scheduleRefresh($delays = [10]) {
+        // Push actif : hOn envoie lui-même le nouvel état, inutile d'aller le chercher
+        if (self::deamon_info()['state'] == 'ok') return;
+        $script = __DIR__ . '/../php/honRefresh.php';
+        $args   = implode(' ', array_map('intval', (array)$delays));
+        exec('nohup php ' . escapeshellarg($script) . ' ' . intval($this->getId()) . ' ' . $args . ' > /dev/null 2>&1 &');
+        log::add('hon', 'debug', 'Rafraîchissements programmés à +' . str_replace(' ', ' s, +', $args) . ' s pour ' . $this->getName());
     }
 
-    /** Récupère le statut depuis l'API en temps réel */
-    private function getDeviceStatusFromAPI($macAddress) {
-        try {
-            $tokens = self::getCachedTokens();
-            if (!$tokens) {
-                log::add('hon', 'info', 'Tokens expirés - tentative de refresh automatique');
-                $refreshSuccess = self::refreshTokens();
-                if ($refreshSuccess) $tokens = self::getCachedTokens();
-                else return false;
-            }
-
-            $resourcesDir = __DIR__ . '/../../resources';
-            $cmd = 'cd ' . escapeshellarg($resourcesDir) . ' && python3 hon_get_status.py ' .
-                   escapeshellarg(config::byKey('email', 'hon')) . ' ' .
-                   escapeshellarg(config::byKey('password', 'hon')) . ' ' .
-                   escapeshellarg($macAddress);
-
-            $output = shell_exec($cmd . ' 2>&1');
-            if ($output) {
-                $statusData = json_decode($output, true);
-                if (is_array($statusData)) return $statusData;
-            }
-            return false;
-
-        } catch (Exception $e) {
-            log::add('hon', 'error', 'Erreur getDeviceStatusFromAPI : ' . $e->getMessage());
-            return false;
-        }
-    }
-
-    /** Lance un programme sur l'équipement */
+    /**
+     * Lance un programme ou envoie stop / pause / resume.
+     * Envoi direct en PHP avec les jetons en cache (~0,5 s) ;
+     * en secours, l'ancien script Python (reconnexion complète, ~5 s).
+     */
     public function launchProgram($programName, $parameters = []) {
+        $start  = microtime(true);
+        $result = $this->sendDirectCommand($programName, $parameters);
+        if ($result !== null) {
+            log::add('hon', 'debug', 'Envoi direct ' . $programName . ' : ' . ($result ? 'OK' : 'ÉCHEC')
+                . ' en ' . round((microtime(true) - $start) * 1000) . ' ms');
+            return $result;
+        }
+        log::add('hon', 'info', 'Envoi direct impossible → script Python');
+        return $this->launchProgramPython($programName, $parameters);
+    }
+
+    /**
+     * Construit et envoie la commande à hOn.
+     * Retourne true/false selon la réponse de hOn, ou null si l'envoi direct n'est pas possible
+     * (jetons ou fichiers de synchro absents) → le script Python prend le relais.
+     */
+    private function sendDirectCommand($programName, $parameters = []) {
+        $tokens = self::getCachedTokens();
+        if (!$tokens) return null;
+
+        $dataDir = $this->getDataDir();
+        $mac     = $this->getMacFilename();
+        $typeName = $this->getConfiguration('applianceType', 'WM');
+
+        if (in_array($programName, ['stop', 'pause', 'resume'])) {
+            // Commande officielle hOn de l'appareil (device_<mac>.json), sinon ancien format
+            $official = ['stop' => 'stopProgram', 'pause' => 'pauseProgram', 'resume' => 'resumeProgram'][$programName];
+            $fallback = [
+                'stop'   => ['machMode' => '3', 'onOffStatus' => '1'],
+                'pause'  => ['pause' => '1'],
+                'resume' => ['pause' => '0'],
+            ][$programName];
+            $commandName = 'startProgram';
+            $params      = $fallback;
+            $deviceFile  = $dataDir . '/device_' . $mac . '.json';
+            if (file_exists($deviceFile)) {
+                $device = json_decode(file_get_contents($deviceFile), true);
+                $def    = $device['commands']['raw_commands_data'][$official] ?? null;
+                if (is_array($def)) {
+                    $commandName = $official;
+                    $params      = [];
+                    foreach (($def['parameters'] ?? []) as $name => $info) {
+                        $value = $info['fixedValue'] ?? $info['defaultValue'] ?? null;
+                        if ($value !== null) $params[$name] = (string)$value;
+                    }
+                }
+            }
+        } else {
+            // Programme : valeurs par défaut du JSON + paramètres choisis (uniquement ceux du programme)
+            $file = $dataDir . '/' . $mac . '_' . $programName . '.json';
+            if (!file_exists($file)) return null;
+            $json = json_decode(file_get_contents($file), true);
+            $info = $json['program_info'] ?? null;
+            if (!is_array($info) || empty($info['default_parameters'])) return null;
+            $typeName    = $json['device_info']['type_name'] ?? $typeName;
+            $commandName = 'startProgram';
+            $params      = $info['default_parameters'];
+            foreach ((array)$parameters as $key => $value) {
+                if (isset($info['parameters'][$key])) $params[$key] = (string)$value;
+                else log::add('hon', 'warning', 'Paramètre ' . $key . ' ignoré (absent du programme ' . $programName . ')');
+            }
+        }
+
+        log::add('hon', 'debug', 'Commande hOn ' . $commandName . ' : ' . json_encode($params));
+        $response = self::postHonCommand($mac, $typeName, $commandName, $params, $tokens);
+        if ($response === 401 && self::refreshTokens()) {
+            $response = self::postHonCommand($mac, $typeName, $commandName, $params, self::getCachedTokens());
+        }
+        if ($response === null || is_int($response)) return null;      // réseau / HTTP → secours Python
+        if (($response['payload']['resultCode'] ?? '') === '0') return true;
+        log::add('hon', 'warning', 'Commande refusée par hOn : ' . json_encode($response));
+        return false;
+    }
+
+    public static $commandUrl = 'https://api-iot.he.services/commands/v1/send';
+
+    /** POST /commands/v1/send — retourne la réponse décodée, le code HTTP en cas d'erreur, ou null */
+    private static function postHonCommand($mac, $typeName, $commandName, $params, $tokens) {
+        $timestamp = gmdate('Y-m-d\TH:i:s\Z');
+        $body = [
+            'macAddress'          => $mac,
+            'timestamp'           => $timestamp,
+            'commandName'         => $commandName,
+            'transactionId'       => $mac . '_' . $timestamp,
+            'applianceOptions'    => new stdClass(),
+            'device'              => [
+                'mobileId'    => $tokens['mobile_id'] ?: bin2hex(random_bytes(8)),
+                'mobileOs'    => 'android',
+                'osVersion'   => 31,
+                'appVersion'  => '2.0.10',
+                'deviceModel' => 'exynos9820',
+            ],
+            'attributes'          => ['channel' => 'mobileApp', 'origin' => 'standardProgram', 'energyLabel' => '0'],
+            'ancillaryParameters' => ['programFamily' => '[standard]', 'remoteActionable' => '1', 'remoteVisible' => '1'],
+            'parameters'          => $params,
+            'applianceType'       => $typeName,
+        ];
+        $ch = curl_init(self::$commandUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($body),
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'cognito-token: ' . $tokens['cognito_token'],
+                'id-token: ' . $tokens['id_token'],
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 10,
+        ]);
+        $raw  = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+        if ($raw === false) {
+            log::add('hon', 'warning', 'Envoi hOn impossible : ' . $err);
+            return null;
+        }
+        if ($code != 200) {
+            log::add('hon', 'warning', 'hOn a répondu HTTP ' . $code . ' : ' . substr($raw, 0, 200));
+            return $code;
+        }
+        return json_decode($raw, true);
+    }
+
+    /** Ancien envoi via hon_launcher.py (secours) */
+    private function launchProgramPython($programName, $parameters = []) {
         try {
             $macAddress = $this->getConfiguration('macAddress');
             if (empty($macAddress)) {
@@ -984,7 +990,6 @@ class hon extends eqLogic {
                         strpos($output, 'PROGRAMME MIS EN PAUSE') !== false ||
                         strpos($output, 'Commande envoyée avec succès') !== false);
 
-            if ($success) $this->scheduleRefresh(5);
             return $success;
 
         } catch (Exception $e) {
@@ -992,16 +997,6 @@ class hon extends eqLogic {
             return false;
         }
     }
-
-    /** Programme un rafraîchissement différé */
-    public function scheduleRefresh($delaySeconds = 5) {
-        $cmd = "sleep $delaySeconds && php " . __DIR__ . "/../../../../core/php/jeedom.php " .
-               "eqLogic::byId(" . $this->getId() . ")->refreshInfo()";
-        exec($cmd . " > /dev/null 2 &>/dev/null &");
-    }
-
-    public function getHonTokens()        { return self::getCachedTokens(); }
-    public function forceTokenRefresh()   { return self::refreshTokens(); }
 
     public function getTokenStatus() {
         $lastTokenTime = config::byKey('lastTokenTime', 'hon', 0);
@@ -1015,74 +1010,49 @@ class hon extends eqLogic {
         ];
     }
 
-    public static function forceSyncDevices() {
-        log::add('hon', 'info', 'Synchronisation manuelle déclenchée');
-        return self::syncDevices();
-    }
-
-    public static function getPluginStats() {
-        $equipments       = eqLogic::byType('hon');
-        $totalCommands    = 0;
-        $enabledEquipments= 0;
-        foreach ($equipments as $equipment) {
-            if ($equipment->getIsEnable()) $enabledEquipments++;
-            $totalCommands += count($equipment->getCmd());
-        }
-        return [
-            'total_equipments'  => count($equipments),
-            'enabled_equipments'=> $enabledEquipments,
-            'total_commands'    => $totalCommands,
-            'data_dir'          => config::byKey('dataDir', 'hon', 'Non configuré'),
-            'last_sync'         => config::byKey('lastSyncTime', 'hon', 'Jamais')
-        ];
-    }
-
     /* ========================= Traductions ========================= */
 
-    private static $translationCache = [];
+    /** Niveaux de séchage hOn (sèche-linge) */
+    private static $dryLevels = [
+        0  => 'Aucun',
+        11 => 'Minuterie',
+        12 => 'Prêt à repasser (H-1)',
+        13 => 'Prêt à ranger (H-2)',
+        14 => 'Très sec (H-3)',
+    ];
 
-    private static function loadTranslations($applianceType) {
-        if (isset(self::$translationCache[$applianceType])) {
-            return self::$translationCache[$applianceType];
-        }
-        $resourcesDir   = __DIR__ . '/../../resources';
-        $translationFile= $resourcesDir . '/' . $applianceType . '_programme.json';
-        if (!file_exists($translationFile)) {
-            log::add('hon', 'warning', 'Fichier de traduction non trouvé : ' . $translationFile);
-            return null;
-        }
-        $content      = file_get_contents($translationFile);
-        $translations = json_decode($content, true);
-        if (!$translations) {
-            log::add('hon', 'error', 'JSON invalide dans le fichier de traduction : ' . $translationFile);
-            return null;
-        }
-        self::$translationCache[$applianceType] = $translations;
-        return $translations;
+    public static function translateDryLevel($dryLevel) {
+        return self::$dryLevels[(int)$dryLevel] ?? 'Niveau ' . $dryLevel;
     }
 
-    public static function translateProgramCode($programCode, $applianceType = 'WM') {
-        $translations = self::loadTranslations($applianceType);
-        if (!$translations || !isset($translations['programs'])) return "";
-        foreach ($translations['programs'] as $program) {
-            if ((isset($program['code']) && $program['code'] == $programCode) ||
-                (isset($program['prCode']) && $program['prCode'] == $programCode)) {
-                return $program['display_name'] ?? $program['name'] ?? "";
-            }
-        }
-        return "";
+    /**
+     * Nom du programme en cours à partir de son prCode.
+     * Plusieurs programmes partagent un même prCode (ex. 115 = Coton et plusieurs programmes hOn) :
+     * priorité au programme sélectionné dans Jeedom, puis au programme natif de la machine.
+     */
+    public function getProgramNameFromCode($prCode) {
+        if ($prCode === '' || $prCode === null || (string)$prCode === '0') return '';
+        $map = $this->getConfiguration('prCodeMap', []);
+        if (!is_array($map) || empty($map)) $map = $this->buildPrCodeMap();
+        $candidates = $map[(string)$prCode] ?? [];
+        if (empty($candidates)) return 'Programme ' . $prCode;
+
+        $info     = $this->getCmd(null, 'selectedProgram');
+        $selected = is_object($info) ? trim((string)$info->execCmd()) : '';
+        if ($selected !== '' && in_array($selected, $candidates)) return self::getProgramLabel($selected);
+        return self::getProgramLabel($candidates[0]);
     }
 
-    public static function translateDryLevel($dryLevel, $applianceType = 'TD') {
-        $translations = self::loadTranslations($applianceType);
-        if (!$translations || !isset($translations['dry_levels'])) return "Niveau " . $dryLevel;
-        foreach ($translations['dry_levels'] as $level) {
-            if ((isset($level['code']) && $level['code'] == $dryLevel) ||
-                (isset($level['value']) && $level['value'] == $dryLevel)) {
-                return $level['display_name'] ?? $level['name'] ?? "Niveau " . $dryLevel;
-            }
+    /** Construit (à la synchro) la table prCode → programmes, natifs en premier */
+    private function buildPrCodeMap($dataDir = null) {
+        $map = [];
+        foreach (array_keys($this->getAvailablePrograms($dataDir)) as $name) {
+            $pars = $this->getProgramParameters($name, $dataDir) ?? [];
+            $code = $pars['prCode']['value'] ?? $pars['prCode']['default'] ?? null;
+            if ($code !== null) $map[(string)$code][] = $name;
         }
-        return "Niveau " . $dryLevel;
+        $this->setConfiguration('prCodeMap', $map);
+        return $map;
     }
 
     /** Mise à jour depuis quick data + traductions + reset "Prêt" */
@@ -1130,7 +1100,9 @@ class hon extends eqLogic {
                 'haier_Detergent_Weight'   => 'haier_DetergentWeight',
                 'remaining_Main_Wash_Time' => 'remainingMainWashTime',
                 'dry_Time_MM'              => 'dryTimeMM',
-                'estimated_end_time'       => 'estimated_end_time'
+                'estimated_end_time'       => 'estimated_end_time',
+                'det_warn'                 => 'detWarn',
+                'soft_warn'                => 'softWarn'
             ];
 
             foreach ($data as $pythonKey => $valueData) {
@@ -1142,41 +1114,17 @@ class hon extends eqLogic {
                 $newValue = $valueData['value'];
 
                 if ($pythonKey === 'program_code') {
-                    $translatedValue = self::translateProgramCode($newValue, $applianceTypeCode);
-                    $translatedCmd   = $eqLogic->getCmd(null, 'prCodeTranslated');
-                    if (!is_object($translatedCmd)) {
-                        $translatedCmd = new honCmd();
-                        $translatedCmd->setLogicalId('prCodeTranslated');
-                        $translatedCmd->setEqLogic_id($eqLogic->getId());
-                        $translatedCmd->setName('Nom du programme');
-                        $translatedCmd->setType('info');
-                        $translatedCmd->setSubType('string');
-                        $translatedCmd->setIsVisible(1);
-                        $translatedCmd->save();
-                    }
-                    $currentTranslatedValue = $translatedCmd->execCmd();
-                    if ($currentTranslatedValue != $translatedValue) {
-                        $translatedCmd->event($translatedValue);
-                        $hasUpdates = true;
-                    }
+                    $translatedCmd = $eqLogic->getCmd(null, 'prCodeTranslated');
+                    $translated    = $eqLogic->getProgramNameFromCode($newValue);
                 } elseif ($pythonKey === 'dry_level') {
-                    $translatedValue = self::translateDryLevel($newValue, $applianceTypeCode);
-                    $translatedCmd   = $eqLogic->getCmd(null, 'dryLevelTranslated');
-                    if (!is_object($translatedCmd)) {
-                        $translatedCmd = new honCmd();
-                        $translatedCmd->setLogicalId('dryLevelTranslated');
-                        $translatedCmd->setEqLogic_id($eqLogic->getId());
-                        $translatedCmd->setName('Niveau de séchage');
-                        $translatedCmd->setType('info');
-                        $translatedCmd->setSubType('string');
-                        $translatedCmd->setIsVisible(1);
-                        $translatedCmd->save();
-                    }
-                    $currentTranslatedValue = $translatedCmd->execCmd();
-                    if ($currentTranslatedValue != $translatedValue) {
-                        $translatedCmd->event($translatedValue);
-                        $hasUpdates = true;
-                    }
+                    $translatedCmd = $eqLogic->getCmd(null, 'dryLevelTranslated');
+                    $translated    = self::translateDryLevel($newValue);
+                } else {
+                    $translatedCmd = null;
+                }
+                if (is_object($translatedCmd) && $translatedCmd->execCmd() != $translated) {
+                    $translatedCmd->event($translated);
+                    $hasUpdates = true;
                 }
 
                 $currentValue = $cmd->execCmd();
@@ -1184,6 +1132,20 @@ class hon extends eqLogic {
                 if ($currentValue != $newValue) {
                     $cmd->event($newValue);
                     $hasUpdates = true;
+                }
+            }
+
+            // Machine à l'arrêt : elle publie la durée du programme affiché sur son écran
+            // (temps restant, lavage principal) sans qu'aucun cycle ne tourne → on affiche 0
+            $stateCmd = $eqLogic->getCmd(null, 'machine_state');
+            $state    = $data['status']['value'] ?? (is_object($stateCmd) ? $stateCmd->execCmd() : '');
+            if ($state !== '' && !in_array($state, ['En cours', 'Pause', 'Programmé'])) {
+                foreach (['remainingTimeMM' => 0, 'remainingMainWashTime' => 0, 'estimated_end_time' => ''] as $id => $idle) {
+                    $c = $eqLogic->getCmd(null, $id);
+                    if (is_object($c) && $c->execCmd() != $idle) {
+                        $c->event($idle);
+                        $hasUpdates = true;
+                    }
                 }
             }
 
@@ -1197,9 +1159,9 @@ class hon extends eqLogic {
                     'prCode'           => '0',
                     'prCodeTranslated' => ''
                 ];
+                // Température et essorage gardent la valeur de la machine (programme affiché) :
+                // le push ne les renvoie que s'ils changent, une remise à 0 resterait bloquée
                 $wmToReset = [
-                    'temp'                   => 0,
-                    'spinSpeed'              => 0,
                     'currentWaterUsed'       => 0.0,
                     'currentElectricityUsed' => 0.0,
                     'actualWeight'           => 0
@@ -1238,208 +1200,426 @@ class hon extends eqLogic {
         }
     }
 
-    /* ========================= JSON programme & température ========================= */
+    /* ========================= Programmes & paramètres ========================= */
 
-    private function getProgramJsonPath($programName) {
-        $dataDir     = config::byKey('dataDir', 'hon', __DIR__ . '/../../resources/hon/data');
+    /**
+     * Paramètres modifiables proposés à l'utilisateur, par type d'appareil.
+     * Clé = nom du paramètre hOn. Pour chacun, le plugin crée :
+     *   - une action select  "set_<param>"     (liste adaptée au programme choisi)
+     *   - une info           "desired_<param>" (valeur choisie, envoyée au démarrage)
+     * Pour ajouter un paramètre (ex. rinseIterations, delayTime), il suffit de l'ajouter ici.
+     */
+    private static $programParams = [
+        'WM' => [
+            'temp'                => ['name' => 'Température',       'unit' => '°C'],
+            'mainWashTime'        => ['name' => 'Temps de lavage',   'unit' => 'min', 'widget' => 'slider'],
+            'spinSpeed'           => ['name' => 'Essorage',          'unit' => 'tr/min'],
+            'autoSoftenerStatus'  => ['name' => 'Adoucissant auto',  'unit' => ''],
+            'autoDetergentStatus' => ['name' => 'Lessive auto',      'unit' => ''],
+        ],
+        'TD' => [
+            'tempLevel'           => ['name' => 'Température',       'unit' => ''],
+            'dryTimeMM'           => ['name' => 'Temps de séchage',  'unit' => 'min'],
+            'dryLevel'            => ['name' => 'Niveau de séchage', 'unit' => ''],
+        ],
+    ];
+
+    /** Noms français des programmes (clé = nom sans préfixe hqd_ / iot_wash_ / iot_dry_) */
+    private static $programLabels = [
+        // Lave-linge
+        '20_degrees' => '20°C', 'allergy' => 'Anti-allergie', 'autoclean' => 'Auto-nettoyage tambour',
+        'babycare' => 'Soin bébé', 'checkup' => 'Diagnostic', 'cottons' => 'Coton',
+        'delicate_cradle' => 'Délicat', 'eco_40_60_degrees' => 'Éco 40-60', 'handwash_wool' => 'Laine / Lavage main',
+        'quick_15' => 'Rapide 15 min', 'quick_wash_57' => 'Rapide 57 min', 'rinse' => 'Rinçage',
+        'smart' => 'Smart', 'spin' => 'Essorage', 'synthetic_and_coloured' => 'Synthétique & couleurs',
+        'anti_mites' => 'Anti-acariens', 'anti_odor' => 'Anti-odeurs',
+        'ariel_clean_cycle' => 'Ariel cycle propre', 'ariel_cold_cycle' => 'Ariel cycle froid', 'ariel_fresh_cycle' => 'Ariel cycle fraîcheur',
+        'dash_clean_cycle' => 'Dash cycle propre', 'dash_cold_cycle' => 'Dash cycle froid', 'dash_fresh_cycle' => 'Dash cycle fraîcheur',
+        'baby_sanitizer' => 'Hygiène bébé', 'bleaching' => 'Blanchiment', 'blood_stains' => 'Taches de sang',
+        'cashmere' => 'Cachemire', 'chocolate_stains' => 'Taches de chocolat', 'cold_wash' => 'Lavage à froid',
+        'colored' => 'Couleurs', 'coloured' => 'Linge coloré', 'colored_anti_stain' => 'Couleurs anti-taches',
+        'colored_delicate' => 'Couleurs délicates', 'dark' => 'Linge foncé', 'delicate_antiallergy' => 'Délicat anti-allergie',
+        'delicate_colors' => 'Délicat couleurs', 'delicate_dark' => 'Délicat foncé', 'delicate_tablecloths' => 'Nappes délicates',
+        'delicate_whites' => 'Délicat blanc', 'diving_suits' => 'Combinaisons de plongée', 'down_jackets' => 'Doudounes',
+        'fruit_stains' => 'Taches de fruits', 'handwash' => 'Lavage à la main', 'handwash_colored' => 'Lavage main couleurs',
+        'handwash_dark' => 'Lavage main foncé', 'masks_refresh' => 'Masques rafraîchissement', 'masks_sanification' => 'Masques désinfection',
+        'mats' => 'Tapis', 'men_s_trousers' => 'Pantalons homme', 'new_clothes' => 'Vêtements neufs',
+        'perfect_white' => 'Blanc parfait', 'pets' => 'Animaux', 'pets_hair_removal' => 'Poils d\'animaux',
+        'pets_odours_stains_removal' => 'Odeurs et taches d\'animaux', 'quick_drum_cleaner' => 'Nettoyage tambour rapide',
+        'rapid_14' => 'Rapide 14 min', 'rapid_44' => 'Rapide 44 min',
+        'resistant_colored' => 'Couleurs résistantes', 'resistant_dark' => 'Foncé résistant', 'resistant_whites' => 'Blanc résistant',
+        'ski_suit' => 'Combinaisons de ski', 'synthetic' => 'Synthétique', 'trainers' => 'Baskets',
+        'whites' => 'Blanc', 'wine_stains' => 'Taches de vin', 'technical_jackets' => 'Vestes techniques',
+        // Communs lave-linge / sèche-linge
+        'backpacks' => 'Sacs à dos', 'bathrobe' => 'Peignoirs', 'bed_linen' => 'Draps', 'cotton' => 'Coton',
+        'cuddly_toys' => 'Peluches', 'curtains' => 'Rideaux', 'curtain' => 'Rideaux', 'delicate' => 'Délicat',
+        'delicates' => 'Délicat', 'denim_jeans' => 'Jeans', 'jeans' => 'Jeans', 'duvet' => 'Couette',
+        'lingerie' => 'Lingerie', 'mix' => 'Mixte', 'mixed' => 'Mixte', 'rapid_30' => 'Rapide 30 min',
+        'rapid_59' => 'Rapide 59 min', 'refresh' => 'Rafraîchissement', 'shirts' => 'Chemises', 'shirt' => 'Chemises',
+        'silk' => 'Soie', 'sport' => 'Sport', 'sports' => 'Sport', 'swimsuits_and_bikinis' => 'Maillots de bain',
+        'synthetics' => 'Synthétique', 'tablecloths' => 'Nappes', 'technical_fabrics' => 'Tissus techniques',
+        'tennis_tie_break' => 'Tennis', 'wool' => 'Laine',
+        // Sèche-linge
+        'baby_care' => 'Bébé', 'baby' => 'Bébé', 'bath_towel' => 'Serviettes de bain', 'bed_sheets' => 'Draps',
+        'bulky' => 'Volumineux', 'casual' => 'Quotidien', 'cold_wind_timing' => 'Air froid minuté',
+        'hot_wind_timing' => 'Air chaud minuté', 'feather' => 'Plumes', 'hygienic' => 'Hygiène',
+        'i_refresh' => 'i-Refresh', 'jacket' => 'Vestes', 'night_dry' => 'Séchage de nuit', 'outdoor' => 'Outdoor',
+        'precious_cure' => 'Soin précieux', 'quick_30' => 'Rapide 30 min', 'quick_dry' => 'Séchage rapide',
+        'quilt' => 'Édredon', 'shoes' => 'Chaussures', 'timer' => 'Minuterie', 'towel' => 'Serviettes',
+        'underwear' => 'Sous-vêtements', 'working_suit' => 'Vêtements de travail', 'down_jacket' => 'Doudounes',
+        'gym_fit' => 'Fitness', 'pet_accessories' => 'Accessoires animaux', 'pet_hair_removal' => 'Poils d\'animaux',
+    ];
+
+    /** Libellé français d'un programme (les programmes téléchargeables hOn sont suffixés "(hOn)") */
+    public static function getProgramLabel($programName) {
+        $isIot = (strpos($programName, 'iot_') === 0);
+        $key   = preg_replace('/^(hqd_|iot_wash_|iot_dry_|iot_)/', '', $programName);
+        $label = self::$programLabels[$key] ?? ucfirst(str_replace('_', ' ', $key));
+        return $isIot ? $label . ' (hOn)' : $label;
+    }
+
+    /** Paramètres gérés pour cet équipement (selon WM / TD / WD) */
+    public function getManagedParams() {
+        $code = self::getApplianceTypeCode($this->getConfiguration('applianceType', ''));
+        switch ($code) {
+            case 'TD': return self::$programParams['TD'];
+            case 'WD': return array_merge(self::$programParams['WM'], self::$programParams['TD']);
+            default:   return self::$programParams['WM'];
+        }
+    }
+
+    private function getDataDir() {
+        return config::byKey('dataDir', 'hon', __DIR__ . '/../../resources/hon/data');
+    }
+
+    private function getMacFilename() {
         $macFilename = $this->getConfiguration('mac_filename', '');
-        if ($macFilename === '') {
-            $mac         = $this->getConfiguration('macAddress', '');
-            $macFilename = str_replace(':', '-', $mac);
-        }
-        $direct = $dataDir . '/' . $macFilename . '_' . $programName . '.json';
-        if (file_exists($direct)) return $direct;
-        $candidates = glob($dataDir . '/*' . $programName . '*.json');
-        if (!empty($candidates)) return $candidates[0];
-        return null;
+        if ($macFilename === '') $macFilename = str_replace(':', '-', $this->getConfiguration('macAddress', ''));
+        return $macFilename;
     }
 
-    private function readProgramJson($programName) {
-        $path = $this->getProgramJsonPath($programName);
-        if (!$path || !file_exists($path)) {
-            log::add('hon', 'debug', 'JSON programme introuvable pour ' . $programName);
+    /** Liste des programmes disponibles : [nom_api => libellé], natifs puis hOn, triés par libellé */
+    public function getAvailablePrograms($dataDir = null) {
+        if ($dataDir === null) $dataDir = $this->getDataDir();
+        $macFilename = $this->getMacFilename();
+        $native = [];
+        $iot    = [];
+        foreach ((array)glob($dataDir . '/' . $macFilename . '_*.json') as $file) {
+            $name = substr(basename($file, '.json'), strlen($macFilename) + 1);
+            if ($name === '' || strpbrk($name, '|;') !== false) continue;
+            if (strpos($name, 'iot_') === 0) $iot[$name]    = self::getProgramLabel($name);
+            else                              $native[$name] = self::getProgramLabel($name);
+        }
+        asort($native, SORT_STRING | SORT_FLAG_CASE);
+        asort($iot,    SORT_STRING | SORT_FLAG_CASE);
+        return $native + $iot;
+    }
+
+    /** Lit le JSON d'un programme et renvoie son bloc "parameters" (ou null) */
+    public function getProgramParameters($programName, $dataDir = null) {
+        if ($programName === '' || preg_match('/[^a-zA-Z0-9_]/', $programName)) return null;
+        $path = ($dataDir ?? $this->getDataDir()) . '/' . $this->getMacFilename() . '_' . $programName . '.json';
+        if (!file_exists($path)) {
+            log::add('hon', 'warning', 'JSON programme introuvable : ' . basename($path));
             return null;
         }
-        $content = @file_get_contents($path);
-        $json    = @json_decode($content, true);
+        $json = json_decode(@file_get_contents($path), true);
         if (!is_array($json)) {
-            log::add('hon', 'warning', 'JSON invalide: ' . basename($path));
+            log::add('hon', 'warning', 'JSON invalide : ' . basename($path));
             return null;
         }
-        return $json;
-    }
-
-    public function getTempSpecForProgram($programName) {
-        $json = $this->readProgramJson($programName);
-        if (!$json) return null;
-
-        $root   = $json['program_info'] ?? $json['program'] ?? $json;
-        $params = $root['parameters']   ?? $root['params']  ?? $root['options'] ?? null;
-        if (!is_array($params)) return null;
-
-        $temp = $params['temp'] ?? ($params['temperature'] ?? null);
-        if (!is_array($temp)) return null;
-
-        if (isset($temp['type']) && strtolower($temp['type']) === 'range') {
-            $min  = isset($temp['min'])  ? floatval($temp['min'])  : 0;
-            $max  = isset($temp['max'])  ? floatval($temp['max'])  : 100;
-            $step = isset($temp['step']) ? floatval($temp['step']) : 1;
-            return ['kind'=>'range','min'=>$min,'max'=>$max,'step'=>$step];
-        }
-
-        if (isset($temp['type']) && strtolower($temp['type']) === 'enum' && isset($temp['values']) && is_array($temp['values'])) {
-            $values = array_map(function($v){ return is_numeric($v) ? 0 + $v : $v; }, $temp['values']);
-            $values = array_values(array_unique($values));
-            if (!empty($values)) return ['kind'=>'enum','values'=>$values];
-        }
-
-        if (isset($temp['min']) || isset($temp['max'])) {
-            $min  = isset($temp['min'])  ? floatval($temp['min'])  : 0;
-            $max  = isset($temp['max'])  ? floatval($temp['max'])  : 100;
-            $step = isset($temp['step']) ? floatval($temp['step']) : 1;
-            return ['kind'=>'range','min'=>$min,'max'=>$max,'step'=>$step];
-        }
-
-        if (isset($temp['values']) && is_array($temp['values'])) {
-            $values = array_map(function($v){ return is_numeric($v) ? 0 + $v : $v; }, $temp['values']);
-            $values = array_values(array_unique($values));
-            if (!empty($values)) return ['kind'=>'enum','values'=>$values];
-        }
-
-        return null;
-    }
-
-    public function normalizeTempToSpec($value, $spec) {
-        if (!is_array($spec)) return $value;
-
-        if ($spec['kind'] === 'range') {
-            $v    = max($spec['min'], min($spec['max'], $value));
-            $step = max(1, floatval($spec['step']));
-            $v    = round(($v - $spec['min']) / $step) * $step + $spec['min'];
-            return is_numeric($v) ? 0 + $v : $v;
-        }
-
-        $best = null; $bestd = PHP_FLOAT_MAX;
-        foreach ($spec['values'] as $cand) {
-            if (!is_numeric($cand) || !is_numeric($value)) continue;
-            $d = abs($value - $cand);
-            if ($d < $bestd) { $bestd = $d; $best = 0 + $cand; }
-        }
-        return ($best !== null) ? $best : $value;
+        $root = $json['program_info'] ?? $json['program'] ?? $json;
+        return $root['parameters'] ?? null;
     }
 
     /**
-     * Applique la spec au widget set_temp
-     * - uniquement pour WM/WD
-     * - pas de programme -> liste vide (aucun)
-     * - enum -> select sans valeur par défaut
-     * - range -> slider, desired_temp laissé vide tant que l’utilisateur n’a pas choisi
+     * Spécification d'un paramètre pour un programme :
+     *   ['fixed' => bool, 'values' => [..], 'default' => v]   ou null si absent du programme
      */
-    public function applyTempSpecForProgram($programName) {
-        // 🚫 ne gérer la température que pour WM/WD
-        $applianceType = $this->getConfiguration('applianceType', '');
-        $applianceCode = self::getApplianceTypeCode($applianceType);
-        if (!in_array($applianceCode, ['WM', 'WD'])) {
-            return;
+    public static function getParamSpec($paramDef) {
+        if (!is_array($paramDef) || !isset($paramDef['type'])) return null;
+        $num = function ($v) { return is_numeric($v) ? 0 + $v : $v; };
+
+        switch (strtolower($paramDef['type'])) {
+            case 'fixed':
+                $v = $num($paramDef['value'] ?? '');
+                return ['fixed' => true, 'values' => [$v], 'default' => $v];
+
+            case 'enum':
+                $values = array_values(array_unique(array_map($num, (array)($paramDef['values'] ?? []))));
+                if (empty($values)) return null;
+                $default = isset($paramDef['default']) ? $num($paramDef['default']) : $values[0];
+                return ['fixed' => (count($values) == 1), 'values' => $values, 'default' => $default];
+
+            case 'range':
+                $min  = floatval($paramDef['min'] ?? 0);
+                $max  = floatval($paramDef['max'] ?? $min);
+                $step = floatval($paramDef['step'] ?? 1);
+                if ($step <= 0) $step = 1;
+                $values = [];
+                for ($v = $min; $v <= $max + 1e-9 && count($values) < 200; $v += $step) $values[] = $num(round($v, 2));
+                if (empty($values)) return null;
+                $default = isset($paramDef['default']) ? $num($paramDef['default']) : $values[0];
+                return ['fixed' => (count($values) == 1), 'values' => $values, 'default' => $default,
+                        'min' => $num($min), 'max' => $num(end($values)), 'step' => $num($step)];
         }
+        return null;
+    }
 
-        $spec = $this->getTempSpecForProgram($programName);
+    /** Ramène une valeur sur la valeur autorisée la plus proche */
+    public static function normalizeToSpec($value, $spec) {
+        if (!is_array($spec) || empty($spec['values'])) return $value;
+        if (in_array($value, $spec['values'])) return $value;
+        if (!is_numeric($value)) return $spec['default'];
+        $best = $spec['default']; $bestD = PHP_FLOAT_MAX;
+        foreach ($spec['values'] as $cand) {
+            if (!is_numeric($cand)) continue;
+            $d = abs($value - $cand);
+            if ($d < $bestD) { $bestD = $d; $best = $cand; }
+        }
+        return $best;
+    }
 
-        // S’assurer que la commande existe (par défaut select vide)
-        $cmd = $this->getCmd(null, 'set_temp');
+    /** Libellé lisible d'une valeur de paramètre */
+    public function formatParamValue($param, $value) {
+        if ($value === '' || $value === null) return '';
+        $v = is_numeric($value) ? 0 + $value : $value;
+        switch ($param) {
+            case 'temp':                return ($v == 0) ? 'Froid' : $v . ' °C';
+            case 'spinSpeed':           return ($v == 0) ? 'Sans essorage' : $v . ' tr/min';
+            case 'mainWashTime':        return $v . ' min';
+            case 'dryTimeMM':           return ($v == 0) ? 'Auto (selon le niveau de séchage)' : $v . ' min';
+            case 'autoSoftenerStatus':
+            case 'autoDetergentStatus': return ($v == 1) ? 'Oui' : 'Non';
+            case 'tempLevel':
+                $t = [1 => 'Froid', 2 => 'Basse (L-1)', 3 => 'Moyenne (L-2)', 4 => 'Haute (L-3)'];
+                return $t[$v] ?? 'Niveau ' . $v;
+            case 'dryLevel':            return self::translateDryLevel($v);
+        }
+        $unit = $this->getManagedParams()[$param]['unit'] ?? '';
+        return trim($v . ' ' . $unit);
+    }
+
+    /** Nom de commande libre sur l'équipement (Jeedom interdit deux commandes du même nom) */
+    private function freeCmdName($name) {
+        $used = [];
+        foreach ($this->getCmd() as $c) $used[] = mb_strtolower(trim($c->getName()));
+        $candidate = $name;
+        for ($i = 2; in_array(mb_strtolower($candidate), $used); $i++) $candidate = $name . ' ' . $i;
+        return $candidate;
+    }
+
+    /** Crée ou met à jour une commande action select (ou slider) liée à une info */
+    private function upsertSelectCommand($logicalId, $name, $listValue, $infoLogicalId = null, $order = null, $subType = 'select') {
+        $cmd = $this->getCmd(null, $logicalId);
         if (!is_object($cmd)) {
-            $this->createSelectActionCommand('set_temp', 'Régler la température', []);
-            $cmd = $this->getCmd(null, 'set_temp');
-        }
-
-        // Aucun param température -> select vide (aucune option)
-        if (!$spec) {
+            $cmd = new honCmd();
+            $cmd->setLogicalId($logicalId);
+            $cmd->setEqLogic_id($this->getId());
+            $cmd->setName($this->freeCmdName($name));
             $cmd->setIsVisible(1);
-            $cmd->setSubType('select');
-            $cmd->setConfiguration('listValue', '');
+            if ($order !== null) $cmd->setOrder($order);
+        }
+        $cmd->setType('action');
+        $cmd->setSubType($subType);
+        $cmd->setConfiguration('listValue', $listValue);
+        if ($subType == 'select') {
             $cmd->setConfiguration('minValue', null);
             $cmd->setConfiguration('maxValue', null);
             $cmd->setConfiguration('step', null);
-            $cmd->save();
-
-            $info = $this->getCmd(null, 'desired_temp');
-            if (is_object($info)) $info->event('');
-            return;
         }
-
-        if ($spec['kind'] === 'range') {
-            $cmd->setIsVisible(1);
-            $cmd->setSubType('slider');
-            $cmd->setConfiguration('minValue', strval($spec['min']));
-            $cmd->setConfiguration('maxValue', strval($spec['max']));
-            $cmd->setConfiguration('step',     strval(max(1, $spec['step'])));
-            $cmd->setConfiguration('listValue', null);
-            $cmd->save();
-            return;
+        if ($infoLogicalId !== null) {
+            $info = $this->getCmd(null, $infoLogicalId);
+            if (is_object($info)) $cmd->setValue($info->getId());
         }
-
-        // enum
-        $vals = array_map(function($v){ $n=is_numeric($v)?0+$v:$v; return $n.'|'.$n; }, $spec['values']);
-        $cmd->setIsVisible(1);
-        $cmd->setSubType('select');
-        $cmd->setConfiguration('listValue', implode(';', $vals));
-        $cmd->setConfiguration('minValue', null);
-        $cmd->setConfiguration('maxValue', null);
-        $cmd->setConfiguration('step', null);
         $cmd->save();
-      $this->refreshWidget();
+        return $cmd;
     }
 
     /**
-     * Workflow sélection → démarrage
-     * - set_temp créé UNIQUEMENT pour WM/WD, et en SELECT VIDE par défaut
+     * Crée les commandes du workflow :
+     *   Programme (select) → paramètres (select par paramètre) → Démarrer
+     * Supprime les anciennes commandes "Sélectionner xxx" (une par programme).
      */
-private function createSelectionWorkflowCommands() {
-    // Infos
-    $this->createInfoCommand('selectedProgram',     'Programme sélectionné', 'string');
-    $this->createInfoCommand('selectedProgramInfo', 'Infos du programme',    'string');
+    private function createSelectionWorkflowCommands($dataDir = null) {
+        // Nettoyage des anciennes commandes "select_<programme>"
+        $removed = 0;
+        foreach ($this->getCmd() as $old) {
+            if (strpos($old->getLogicalId(), 'select_') === 0) { $old->remove(); $removed++; }
+        }
+        if ($removed > 0) log::add('hon', 'info', $removed . ' anciennes commandes "Sélectionner ..." supprimées pour ' . $this->getName());
 
-    // Boutons
-    $this->createActionCommand('start_selected',  'Démarrer le programme sélectionné');
-    $this->createActionCommand('clear_selection', 'Effacer la sélection');
+        // Infos
+        $this->createInfoCommand('selectedProgram',     'Programme sélectionné', 'string');
+        $this->createInfoCommand('selectedProgramInfo', 'Infos du programme',    'string');
 
-    // Type d’appareil
-    $applianceType = $this->getConfiguration('applianceType', '');
-    $applianceCode = self::getApplianceTypeCode($applianceType);
+        // Select programme
+        $programs = $this->getAvailablePrograms($dataDir);
+        $pairs    = ['|Aucun'];
+        foreach ($programs as $name => $label) $pairs[] = $name . '|' . $label;
+        $this->upsertSelectCommand('program', 'Programme', implode(';', $pairs), 'selectedProgram');
+        log::add('hon', 'info', 'Commande "Programme" : ' . count($programs) . ' programmes pour ' . $this->getName());
 
-// Température uniquement pour WM/WD
-if (in_array($applianceCode, ['WM', 'WD'])) {
+        // Un select (ou slider) + une info par paramètre modifiable
+        foreach ($this->getManagedParams() as $param => $def) {
+            $isSlider = (($def['widget'] ?? 'select') == 'slider');
+            $info = $this->getCmd(null, 'desired_' . $param);
+            if (!is_object($info)) {
+                $this->createInfoCommand('desired_' . $param, $this->freeCmdName('Réglage ' . mb_strtolower($def['name'])), $isSlider ? 'numeric' : 'string', $isSlider ? $def['unit'] : '');
+            } elseif ($isSlider && $info->getSubType() != 'numeric') {
+                $info->setSubType('numeric');
+                $info->setUnite($def['unit']);
+                $info->save();
+            }
+            $this->upsertSelectCommand('set_' . $param, 'Choix ' . mb_strtolower($def['name']), '', 'desired_' . $param, null, $isSlider ? 'slider' : 'select');
+        }
 
-    $this->createInfoCommand('desired_temp', 'Température choisie', 'numeric', '°C');
+        // Boutons
+        $this->createActionCommand('start_selected',  'Démarrer le programme sélectionné');
+        $this->createActionCommand('clear_selection', 'Effacer la sélection');
 
-    $values = [0, 20, 30, 40, 60, 90];
-    $pairs  = array_map(function($v){ return $v . '|' . $v; }, $values);
-    $listValue = implode(';', $pairs);
-
-    $setTemp = $this->getCmd(null, 'set_temp');
-    if (!is_object($setTemp)) {
-        $this->createSelectActionCommand('set_temp', 'Régler la température', $values);
-        $setTemp = $this->getCmd(null, 'set_temp'); // <-- important: recharger l'objet
-    } else {
-        $setTemp->setType('action');
-        $setTemp->setSubType('select');
-        $setTemp->setIsVisible(1);
-        $setTemp->setName('Régler la température');
-        $setTemp->setConfiguration('listValue', $listValue);
-        $setTemp->save();
+        // Réapplique le programme déjà sélectionné (listes à jour après une synchro)
+        $info     = $this->getCmd(null, 'selectedProgram');
+        $selected = is_object($info) ? trim((string)$info->execCmd()) : '';
+        if ($selected !== '' && isset($programs[$selected])) $this->selectProgram($selected);
+        else                                                 $this->clearSelection();
     }
 
-    // ✅ Lier la valeur affichée du widget set_temp à desired_temp
-    $desired = $this->getCmd(null, 'desired_temp');
-    if (is_object($desired) && is_object($setTemp)) {
-        $setTemp->setValue($desired->getId());
-        $setTemp->save();
+    /** Sélection d'un programme : adapte chaque paramètre et pré-remplit les valeurs par défaut */
+    public function selectProgram($programName) {
+        $programName = trim((string)$programName);
+        if ($programName === '' || in_array(strtolower($programName), ['none', 'aucun', 'effacer'])) {
+            $this->clearSelection();
+            return;
+        }
+
+        // Accepte aussi le libellé (ex. depuis un scénario : "Coton")
+        $programs = $this->getAvailablePrograms();
+        if (!isset($programs[$programName])) {
+            $found = array_search($programName, $programs);
+            if ($found === false) throw new Exception('Programme inconnu : ' . $programName);
+            $programName = $found;
+        }
+
+        log::add('hon', 'info', 'Sélection programme ' . $programName . ' (' . $programs[$programName] . ') sur ' . $this->getName());
+        $params = $this->getProgramParameters($programName) ?? [];
+
+        $infoSel = $this->getCmd(null, 'selectedProgram');
+        if (is_object($infoSel)) $infoSel->event($programName);
+
+        foreach ($this->getManagedParams() as $param => $def) {
+            $spec    = self::getParamSpec($params[$param] ?? null);
+            $setCmd  = $this->getCmd(null, 'set_' . $param);
+            $infoCmd = $this->getCmd(null, 'desired_' . $param);
+            if (!is_object($setCmd) || !is_object($infoCmd)) continue;
+
+            if (($def['widget'] ?? 'select') == 'slider') {
+                // Slider : bornes et pas du programme (bloqué sur la valeur si fixe ou absent)
+                $min  = ($spec === null) ? 0 : ($spec['fixed'] ? $spec['default'] : ($spec['min'] ?? min($spec['values'])));
+                $max  = ($spec === null) ? 0 : ($spec['fixed'] ? $spec['default'] : ($spec['max'] ?? max($spec['values'])));
+                $step = ($spec === null || $spec['fixed']) ? 1 : ($spec['step'] ?? 1);
+                $setCmd->setConfiguration('minValue', strval($min));
+                $setCmd->setConfiguration('maxValue', strval($max));
+                $setCmd->setConfiguration('step',     strval($step));
+                $infoCmd->event($spec === null ? '' : $spec['default']);
+            } elseif ($spec === null) {
+                $setCmd->setConfiguration('listValue', '');
+                $infoCmd->event('');
+            } else {
+                $pairs = [];
+                foreach ($spec['values'] as $v) {
+                    $label   = $this->formatParamValue($param, $v) . ($spec['fixed'] ? ' (fixe)' : '');
+                    $pairs[] = $v . '|' . $label;
+                }
+                $setCmd->setConfiguration('listValue', implode(';', $pairs));
+                $infoCmd->event($spec['default']);
+            }
+            $setCmd->save();
+        }
+
+        $this->updateSelectionSummary();
+        $this->refreshWidget();
     }
-}
-}
 
+    /** Efface la sélection et vide les listes de paramètres */
+    public function clearSelection() {
+        foreach (['selectedProgram', 'selectedProgramInfo'] as $id) {
+            $c = $this->getCmd(null, $id);
+            if (is_object($c)) $c->event('');
+        }
+        foreach ($this->getManagedParams() as $param => $def) {
+            $setCmd = $this->getCmd(null, 'set_' . $param);
+            if (is_object($setCmd)) {
+                $setCmd->setConfiguration('listValue', '');
+                $setCmd->save();
+            }
+            $infoCmd = $this->getCmd(null, 'desired_' . $param);
+            if (is_object($infoCmd)) $infoCmd->event('');
+        }
+        $this->refreshWidget();
+        log::add('hon', 'info', 'Sélection effacée sur ' . $this->getName());
+    }
 
+    /** Modifie un paramètre du programme sélectionné (valeur ramenée sur une valeur autorisée) */
+    public function setProgramParam($param, $value) {
+        $managed = $this->getManagedParams();
+        if (!isset($managed[$param])) throw new Exception('Paramètre non géré : ' . $param);
 
+        $info     = $this->getCmd(null, 'selectedProgram');
+        $selected = is_object($info) ? trim((string)$info->execCmd()) : '';
+        if ($selected === '') throw new Exception('Sélectionnez d\'abord un programme');
+
+        $params = $this->getProgramParameters($selected) ?? [];
+        $spec   = self::getParamSpec($params[$param] ?? null);
+        if ($spec === null) throw new Exception($managed[$param]['name'] . ' non disponible pour ce programme');
+        if ($spec['fixed']) {
+            log::add('hon', 'info', $managed[$param]['name'] . ' est fixe pour ce programme → ' . $spec['default']);
+            $value = $spec['default'];
+        } elseif ($value === '' || $value === null) {
+            $value = $spec['default'];
+        } else {
+            $value = self::normalizeToSpec(is_numeric($value) ? 0 + $value : $value, $spec);
+        }
+
+        $infoCmd = $this->getCmd(null, 'desired_' . $param);
+        if (is_object($infoCmd)) $infoCmd->event($value);
+        log::add('hon', 'info', $managed[$param]['name'] . ' = ' . $this->formatParamValue($param, $value) . ' (' . $selected . ')');
+        $this->updateSelectionSummary();
+        // Réaffiche la tuile : la mise à jour en direct de Jeedom n'affiche pas les retours à la ligne
+        $this->refreshWidget();
+    }
+
+    /** Paramètres à envoyer au lancement (uniquement ceux modifiables par le programme) */
+    public function getSelectedParameters($programName) {
+        $params = $this->getProgramParameters($programName) ?? [];
+        $out    = [];
+        foreach ($this->getManagedParams() as $param => $def) {
+            $spec = self::getParamSpec($params[$param] ?? null);
+            if ($spec === null || $spec['fixed']) continue;
+            $infoCmd = $this->getCmd(null, 'desired_' . $param);
+            $raw     = is_object($infoCmd) ? trim((string)$infoCmd->execCmd()) : '';
+            if ($raw === '') continue;
+            $out[$param] = (string)self::normalizeToSpec(is_numeric($raw) ? 0 + $raw : $raw, $spec);
+        }
+        return $out;
+    }
+
+    /** Met à jour "Infos du programme" avec le programme et les valeurs choisies */
+    public function updateSelectionSummary() {
+        $info     = $this->getCmd(null, 'selectedProgram');
+        $selected = is_object($info) ? trim((string)$info->execCmd()) : '';
+        $lines    = [];
+        if ($selected !== '') {
+            $lines[] = self::getProgramLabel($selected);
+            foreach ($this->getManagedParams() as $param => $def) {
+                $c   = $this->getCmd(null, 'desired_' . $param);
+                $val = is_object($c) ? trim((string)$c->execCmd()) : '';
+                if ($val !== '') $lines[] = $def['name'] . ' : ' . $this->formatParamValue($param, $val);
+            }
+        }
+        $summary = $this->getCmd(null, 'selectedProgramInfo');
+        if (is_object($summary)) $summary->event(implode("\n", $lines));
+    }
 
     private function createMappedInfoCommandsWithTranslation() {
         $applianceType     = $this->getConfiguration('applianceType', '');
@@ -1466,340 +1646,66 @@ class honCmd extends cmd {
     public function preSave() {}
     public function postSave() {}
 
+    /** Valeur transmise à une action (select, slider ou message) */
+    private static function optionValue($_options) {
+        foreach (['select', 'slider', 'message'] as $k) {
+            if (isset($_options[$k]) && $_options[$k] !== '') return trim((string)$_options[$k]);
+        }
+        return '';
+    }
+
     public function execute($_options = array()) {
         $eqLogic = $this->getEqLogic();
         if (!is_object($eqLogic)) throw new Exception('Équipement non trouvé');
 
         $logicalId = $this->getLogicalId();
-        log::add('hon', 'debug', 'Exécution commande ' . $logicalId . ' sur ' . $eqLogic->getName());
+        log::add('hon', 'debug', 'Exécution commande ' . $logicalId . ' sur ' . $eqLogic->getName() . ' ' . json_encode($_options));
 
-        if ($logicalId == 'refresh') {
-            $eqLogic->refreshInfo();
-            log::add('hon', 'info', 'Rafraîchissement manuel de ' . $eqLogic->getName());
-            return;
-
-        } elseif ($logicalId == 'stop') {
-            $result = $eqLogic->launchProgram('stop');
-            log::add('hon', 'info', 'Arrêt de ' . $eqLogic->getName() . ' : ' . ($result ? 'OK' : 'ÉCHEC'));
-
-        } elseif ($logicalId == 'pause') {
-            $result = $eqLogic->launchProgram('pause');
-            log::add('hon', 'info', 'Pause de ' . $eqLogic->getName() . ' : ' . ($result ? 'OK' : 'ÉCHEC'));
-
-        } elseif ($logicalId == 'resume') {
-            $result = $eqLogic->launchProgram('resume');
-            log::add('hon', 'info', 'Reprise de ' . $eqLogic->getName() . ' : ' . ($result ? 'OK' : 'ÉCHEC'));
-
-        } elseif ($logicalId == 'clear_selection') {
-            // 1) Vide selectedProgram
-            $infoSel = $eqLogic->getCmd(null, 'selectedProgram');
-            if (is_object($infoSel)) { $infoSel->event(''); }
-
-            // 2) Vide selectedProgramInfo
-            $infoSum = $eqLogic->getCmd(null, 'selectedProgramInfo');
-            if (!is_object($infoSum) && method_exists($eqLogic, 'createInfoCommand')) {
-                $eqLogic->createInfoCommand('selectedProgramInfo', 'Infos du programme', 'string');
-                $infoSum = $eqLogic->getCmd(null, 'selectedProgramInfo');
-            }
-            if (is_object($infoSum)) { $infoSum->event(''); }
-
-            // 3) Vide la température mémorisée → "aucun"
-            $tCmd = $eqLogic->getCmd(null, 'desired_temp');
-            if (is_object($tCmd)) { $tCmd->event(''); }
-
-            // 4) Si set_temp existe (WM/WD), on revient à LISTE VIDE
-            $setTemp = $eqLogic->getCmd(null, 'set_temp');
-            if (is_object($setTemp)) {
-                $setTemp->setSubType('select');
-                $setTemp->setConfiguration('listValue', ''); // aucune option
-                $setTemp->setConfiguration('minValue', null);
-                $setTemp->setConfiguration('maxValue', null);
-                $setTemp->setConfiguration('step', null);
-                $setTemp->setName('Régler la température');
-                $setTemp->save();
-            }
-
-            log::add('hon', 'info', 'Sélection effacée sur ' . $eqLogic->getName());
-            return;
-
-        } elseif ($logicalId == 'set_temp') {
-            // Valeur reçue (peut être vide ou numérique)
-            $val = null;
-            if (isset($_options['select']))  $val = $_options['select'];
-            elseif (isset($_options['slider']))  $val = $_options['slider'];
-            elseif (isset($_options['message'])) $val = $_options['message'];
-
-            // Aucune valeur → on garde "aucun"
-            if ($val === null || $val === '') {
-                $val = '';
-                log::add('hon', 'info', 'Température effacée → programme utilisera la température standard');
-            }
-
-            // Mémorisation
-            $desired = $eqLogic->getCmd(null, 'desired_temp');
-            if (!is_object($desired) && method_exists($eqLogic, 'createInfoCommand')) {
-                $eqLogic->createInfoCommand('desired_temp', 'Température choisie', 'numeric', '°C');
-                $desired = $eqLogic->getCmd(null, 'desired_temp');
-            }
-            if (is_object($desired)) $desired->event($val);
-
-            log::add('hon', 'debug', "Température mémorisée (desired_temp) = '" . $val . "'");
-            return;
-
-        } elseif ($logicalId == 'start_selected') {
-            // Démarrer programme sélectionné
-            $info     = $eqLogic->getCmd(null, 'selectedProgram');
-            $selected = is_object($info) ? trim((string)$info->execCmd()) : '';
-            if ($selected === '') throw new Exception('Aucun programme sélectionné');
-
-            $parameters = [];
-            if (isset($_options['parameters']) && is_array($_options['parameters'])) {
-                $parameters = $_options['parameters'];
-            }
-
-            // desired_temp : si vide -> standard, sinon normaliser et transmettre
-            $desiredInfo = $eqLogic->getCmd(null, 'desired_temp');
-            if (is_object($desiredInfo)) {
-                $raw = trim((string)$desiredInfo->execCmd());
-                if ($raw === '') {
-                    log::add('hon', 'info', "Température non choisie → lancement standard (valeur par défaut JSON)");
-                } else {
-                    if (is_numeric($raw)) {
-                        $ival = 0 + $raw;
-                        if (method_exists($eqLogic, 'getTempSpecForProgram') && method_exists($eqLogic, 'normalizeTempToSpec')) {
-                            $spec = $eqLogic->getTempSpecForProgram($selected);
-                            if ($spec) $ival = $eqLogic->normalizeTempToSpec($ival, $spec);
-                        }
-                        $parameters['temp'] = $ival;
-                        log::add('hon', 'info', "Température choisie prise en compte → temp={$ival}");
-                    } else {
-                        log::add('hon', 'warning', "Température non numérique ('{$raw}') → ignorée");
-                    }
-                }
-            }
-
-            $result = $eqLogic->launchProgram($selected, $parameters);
-            log::add('hon', 'info', 'Démarrage du programme sélectionné (' . $selected . ') sur ' . $eqLogic->getName() . ' : ' . ($result ? 'OK' : 'ÉCHEC'));
-            if (!$result) throw new Exception('Échec du lancement du programme ' . $selected);
-
-            // 🔁 rafraîchir immédiatement toutes les devices (équivalent cron)
-            try {
-                hon::refreshAllDevices();
-            } catch (Exception $e) {
-                log::add('hon', 'warning', 'RefreshAllDevices post-lancement a échoué : ' . $e->getMessage());
-            }
-
-            // Et garder un petit refresh différé
-            $eqLogic->scheduleRefresh(3);
-            return;
-
-        } elseif (strpos($logicalId, 'select_') === 0) {
-            // Sélection d'un programme
-            $programName = $this->getConfiguration('program', '');
-            if ($programName === '' || strtolower($programName) === 'none' || strtolower($programName) === 'effacer') {
-                // Effacement rapide
-                $infoSel = $eqLogic->getCmd(null, 'selectedProgram');
-                if (is_object($infoSel)) $infoSel->event('');
-
-                $infoSummary = $eqLogic->getCmd(null, 'selectedProgramInfo');
-                if (is_object($infoSummary)) $infoSummary->event('');
-
-                $infoTemp = $eqLogic->getCmd(null, 'desired_temp');
-                if (is_object($infoTemp)) $infoTemp->event('');
-
-                $setTemp = $eqLogic->getCmd(null, 'set_temp');
-                if (is_object($setTemp)) {
-                    $setTemp->setSubType('select');
-                    $setTemp->setConfiguration('listValue', ''); // liste vide
-                    $setTemp->setConfiguration('minValue', null);
-                    $setTemp->setConfiguration('maxValue', null);
-                    $setTemp->setConfiguration('step', null);
-                    $setTemp->setName('Régler la température');
-                    $setTemp->save();
-                }
-
-                log::add('hon', 'info', 'Effacement du programme sélectionné pour ' . $eqLogic->getName());
+        switch ($logicalId) {
+            case 'refresh':
+                $eqLogic->refreshInfo();
                 return;
-            }
 
-            log::add('hon', 'info', '=== Sélection du programme : ' . $programName . ' sur ' . $eqLogic->getName() . ' ===');
+            case 'stop':
+            case 'pause':
+            case 'resume':
+                $result = $eqLogic->launchProgram($logicalId);
+                log::add('hon', 'info', ucfirst($logicalId) . ' sur ' . $eqLogic->getName() . ' : ' . ($result ? 'OK' : 'ÉCHEC'));
+                if ($result) $eqLogic->scheduleRefresh();
+                return;
 
-            // 1) Mémoriser la sélection
-            $infoSel = $eqLogic->getCmd(null, 'selectedProgram');
-            if (!is_object($infoSel) && method_exists($eqLogic, 'createInfoCommand')) {
-                $eqLogic->createInfoCommand('selectedProgram', 'Programme sélectionné', 'string');
-                $infoSel = $eqLogic->getCmd(null, 'selectedProgram');
-            }
-            if (is_object($infoSel)) $infoSel->event($programName);
+            case 'program':
+                $eqLogic->selectProgram(self::optionValue($_options));
+                return;
 
-            // 2) Résumé
-            $infoSummary = $eqLogic->getCmd(null, 'selectedProgramInfo');
-            if (!is_object($infoSummary) && method_exists($eqLogic, 'createInfoCommand')) {
-                $eqLogic->createInfoCommand('selectedProgramInfo', 'Infos du programme', 'string');
-                $infoSummary = $eqLogic->getCmd(null, 'selectedProgramInfo');
-            }
+            case 'clear_selection':
+                $eqLogic->clearSelection();
+                return;
 
-            $lines = [];
-            try {
-                $dataDir     = config::byKey('dataDir', 'hon', __DIR__ . '/../../resources/hon/data');
-                $macFilename = $eqLogic->getConfiguration('mac_filename', '');
-                if ($macFilename === '') {
-                    $mac         = $eqLogic->getConfiguration('macAddress', '');
-                    $macFilename = str_replace(':', '-', $mac);
+            case 'start_selected':
+                $info     = $eqLogic->getCmd(null, 'selectedProgram');
+                $selected = is_object($info) ? trim((string)$info->execCmd()) : '';
+                if ($selected === '') throw new Exception('Aucun programme sélectionné');
+
+                $parameters = $eqLogic->getSelectedParameters($selected);
+                if (isset($_options['parameters']) && is_array($_options['parameters'])) {
+                    $parameters = array_merge($parameters, $_options['parameters']);
                 }
-                $directFile = $dataDir . '/' . $macFilename . '_' . $programName . '.json';
+                log::add('hon', 'info', 'Démarrage ' . $selected . ' sur ' . $eqLogic->getName() . ' avec ' . json_encode($parameters));
 
-                $foundData = null;
-                if (file_exists($directFile)) {
-                    $content = @file_get_contents($directFile);
-                    $json    = @json_decode($content, true);
-                    if (is_array($json)) $foundData = $json;
-                }
-
-                if ($foundData) {
-                    $root   = $foundData['program_info'] ?? $foundData['program'] ?? $foundData;
-                    $params = $root['parameters'] ?? $root['params'] ?? $root['options'] ?? $root;
-
-                    $readParam = function($source, $keys) {
-                        foreach ((array)$keys as $k) {
-                            if (!isset($source[$k])) continue;
-                            $v = $source[$k];
-                            if (is_array($v)) {
-                                if (isset($v['default'])) return is_numeric($v['default']) ? 0 + $v['default'] : $v['default'];
-                                if (isset($v['value']))   return is_numeric($v['value'])   ? 0 + $v['value']   : $v['value'];
-                            } else {
-                                return is_numeric($v) ? 0 + $v : $v;
-                            }
-                        }
-                        return null;
-                    };
-
-                    $name     = $root['display_name'] ?? $root['displayName'] ?? $root['name'] ?? $programName;
-                    $duration = $readParam($params, ['duration','durationMM','durationMin']);
-                    $temp     = $readParam($params, ['temperature','temp']);
-                  
-                  
-                  // ✅ Appliquer la spec temp (slider/select) pour ce programme
-if (method_exists($eqLogic, 'applyTempSpecForProgram')) {
-    $eqLogic->applyTempSpecForProgram($programName);
-}
-
-// ✅ Mettre la température du programme dans desired_temp (et donc dans le widget)
-$desired = $eqLogic->getCmd(null, 'desired_temp');
-if (is_object($desired)) {
-    if ($temp !== null && $temp !== '') {
-        $t = is_numeric($temp) ? (0 + $temp) : $temp;
-
-        // Normaliser si possible (au cas où temp n'est pas exactement dans la spec)
-        if (is_numeric($t) && method_exists($eqLogic, 'getTempSpecForProgram') && method_exists($eqLogic, 'normalizeTempToSpec')) {
-            $spec = $eqLogic->getTempSpecForProgram($programName);
-            if ($spec) $t = $eqLogic->normalizeTempToSpec($t, $spec);
+                $result = $eqLogic->launchProgram($selected, $parameters);
+                if (!$result) throw new Exception('Échec du lancement du programme ' . $selected);
+                $eqLogic->scheduleRefresh();
+                return;
         }
 
-        $desired->event($t);
-        log::add('hon', 'info', "Température programme → desired_temp = {$t}");
-    } else {
-        // pas de temp trouvée => on laisse vide (temp standard)
-        $desired->event('');
-    }
-}
-                  
-                  
-
-                    $spin     = $readParam($params, ['spinSpeed','spin']);
-                    $autoDet  = $readParam($params, ['autoDetergentStatus','autoDetergent']);
-                    $autoSoft = $readParam($params, ['autoSoftenerStatus','autoSoftener']);
-
-                    $lines[] = $name;
-             if ($temp !== null && $temp !== '') {
-
-    $tempLine = 'Temp : ' . $temp . '°C';
-
-    // Ajouter les températures possibles entre parenthèses
-    if (method_exists($eqLogic, 'getTempSpecForProgram')) {
-        $spec = $eqLogic->getTempSpecForProgram($programName);
-
-        if (is_array($spec)) {
-            if (($spec['kind'] ?? '') === 'range') {
-                $min  = $spec['min'];
-                $max  = $spec['max'];
-                $step = $spec['step'] ?? 1;
-
-                $fmt = function($n) {
-                    return (is_numeric($n) && floor($n) == $n) ? (string)(int)$n : (string)$n;
-                };
-
-                $tempLine .= ' (' .
-                             $fmt($min) . ' à ' . $fmt($max) . ', pas ' . $fmt($step) .
-                             ')';
-
-            } elseif (($spec['kind'] ?? '') === 'enum' && !empty($spec['values'])) {
-                $vals = array_map(function($v){
-                    return (is_numeric($v) && floor($v) == $v) ? (string)(int)$v : (string)$v;
-                }, $spec['values']);
-
-                $tempLine .= ' (' . implode(', ', $vals) . ')';
-            }
-        }
-    }
-
-    $lines[] = $tempLine;
-}
-
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                    if ($spin !== null && $spin !== '')         $lines[] = 'Essorage : ' . $spin . ' rpm';
-                    if ($duration !== null && $duration !== '') $lines[] = 'Durée : ' . $duration . ' min';
-                    if ($autoDet !== null && $autoDet !== '')   $lines[] = ((string)$autoDet === "1" || strtolower((string)$autoDet) === "true") ? "Auto lessive : activé" : "Auto lessive : désactivé";
-                    if ($autoSoft !== null && $autoSoft !== '') $lines[] = ((string)$autoSoft === "1" || strtolower((string)$autoSoft) === "true") ? "Auto adoucissant : activé" : "Auto adoucissant : désactivé";
-                }
-
-
-
-            } catch (Exception $e) {
-                log::add('hon', 'error', 'Erreur lecture JSON programme : ' . $e->getMessage());
-            }
-
-            if (empty($lines)) {
-                $lines[] = $programName;
-                $grab = function($id) use ($eqLogic) {
-                    $c = $eqLogic->getCmd(null, $id);
-                    if (is_object($c)) { return trim((string)$c->execCmd()); }
-                    return null;
-                };
-                $temp     = $grab('temp');
-                $spin     = $grab('spinSpeed');
-                $dur      = $grab('remainingTimeMM');
-                $autoDet  = $grab('autoDetergentStatus');
-                $autoSoft = $grab('autoSoftenerStatus');
-
-                if ($temp !== null && $temp !== '')  $lines[] = 'Température : ' . $temp . '°C';
-                if ($spin !== null && $spin !== '')  $lines[] = 'Essorage : ' . $spin . ' rpm';
-                if ($dur  !== null && $dur  !== '')  $lines[] = 'Durée : ' . $dur . ' min';
-                if ($autoDet !== null && $autoDet !== '')  $lines[] = ((string)$autoDet === "1") ? "Auto lessive : activé" : "Auto lessive : désactivé";
-                if ($autoSoft !== null && $autoSoft !== '') $lines[] = ((string)$autoSoft === "1") ? "Auto adoucissant : activé" : "Auto adoucissant : désactivé";
-
-            }
-
-            $infoSummary = $eqLogic->getCmd(null, 'selectedProgramInfo');
-           // if (is_object($infoSummary)) $infoSummary->event(implode('<br>', $lines));
-          if (is_object($infoSummary)) $infoSummary->event(implode("\n", $lines));
-
-            log::add('hon', 'info', '=== Fin sélection programme ===');
-
-        } else {
-            log::add('hon', 'warning', 'Commande non reconnue : ' . $logicalId);
+        // set_<paramètre> : modification d'un paramètre du programme sélectionné
+        if (strpos($logicalId, 'set_') === 0) {
+            $eqLogic->setProgramParam(substr($logicalId, 4), self::optionValue($_options));
+            return;
         }
 
-        if (in_array($logicalId, ['stop', 'pause', 'resume', 'start_selected'])) {
-            $eqLogic->scheduleRefresh(3);
-        }
+        log::add('hon', 'warning', 'Commande non reconnue : ' . $logicalId);
     }
 }
 

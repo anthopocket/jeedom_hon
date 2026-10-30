@@ -108,7 +108,17 @@ function hon_update() {
         if (config::byKey('commandTimeout', 'hon') == '') {
             config::save('commandTimeout', 30, 'hon');
         }
-        
+
+        // Recrée les commandes (select Programme + paramètres, suppression des anciennes "Sélectionner ...")
+        require_once __DIR__ . '/../core/class/hon.class.php';
+        foreach (eqLogic::byType('hon') as $eqLogic) {
+            try {
+                $eqLogic->createCommandsFromJson();
+            } catch (Exception $e) {
+                log::add('hon', 'error', 'Mise à jour des commandes de ' . $eqLogic->getName() . ' : ' . $e->getMessage());
+            }
+        }
+
         log::add('hon', 'info', '✅ Mise à jour du plugin hOn terminée avec succès');
         
     } catch (Exception $e) {

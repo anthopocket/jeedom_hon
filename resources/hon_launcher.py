@@ -346,20 +346,15 @@ class HonLauncher:
         """Trouve un appareil par son adresse MAC depuis les appareils connectés"""
         # Note: Cette méthode nécessiterait une requête API pour récupérer les appareils
         # Pour simplifier, on retourne un objet factice basé sur les données JSON
-        program_data = self.load_program_json(mac_address, "cottons")  # Essaie avec un programme courant
-        if not program_data:
-            # Essaie de trouver n'importe quel programme pour cet appareil
-            mac_filename = self.mac_to_filename(mac_address)
-            pattern = os.path.join(DATA_DIR, f"{mac_filename}_*.json")
-            files = glob.glob(pattern)
-            if files:
-                try:
-                    with open(files[0], 'r', encoding='utf-8') as f:
-                        program_data = json.load(f)
-                except:
-                    return None
-            else:
-                return None
+        # N'importe quel programme de cet appareil suffit (device_info identique)
+        files = glob.glob(os.path.join(DATA_DIR, f"{self.mac_to_filename(mac_address)}_*.json"))
+        if not files:
+            return None
+        try:
+            with open(files[0], 'r', encoding='utf-8') as f:
+                program_data = json.load(f)
+        except Exception:
+            return None
         
         device_info = program_data['device_info']
         return {
@@ -368,6 +363,31 @@ class HonLauncher:
             "applianceTypeId": device_info['type_id'],
             "applianceTypeName": device_info.get('type_name', 'WM')  # Default WM pour machine à laver
         }
+
+    def load_device_command(self, mac_address, command_name):
+        """Paramètres d'une commande telle que définie par hOn pour cet appareil
+        (fichier device_<mac>.json généré à la synchro). None si absente."""
+        path = os.path.join(DATA_DIR, f"device_{self.mac_to_filename(mac_address)}.json")
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                raw = json.load(f)['commands']['raw_commands_data'][command_name]
+        except Exception:
+            return None
+        params = {}
+        for name, info in (raw.get('parameters') or {}).items():
+            value = info.get('fixedValue', info.get('defaultValue'))
+            if value is not None:
+                params[name] = str(value)
+        return params
+
+    async def send_device_command(self, appliance, mac_address, command_name, fallback_parameters):
+        """Envoie la commande officielle hOn si elle existe, sinon l'ancienne méthode (startProgram)"""
+        params = self.load_device_command(mac_address, command_name)
+        if params is not None:
+            logger.info(f"📋 Commande hOn {command_name}: {params}")
+            return await self.send_command(appliance, command_name, params)
+        logger.info(f"📋 {command_name} non défini pour cet appareil → startProgram {fallback_parameters}")
+        return await self.send_command(appliance, "startProgram", fallback_parameters)
 
     async def send_command(self, appliance, command_name, parameters):
         """Envoie une commande à un appareil"""
@@ -431,7 +451,7 @@ class HonLauncher:
             "pause": "1"
         }
         
-        result = await self.send_command(appliance, "startProgram", pause_parameters)
+        result = await self.send_device_command(appliance, mac_address, "pauseProgram", pause_parameters)
         
         if result:
             print("⏸️ PROGRAMME MIS EN PAUSE")
@@ -456,7 +476,7 @@ class HonLauncher:
             "pause": "0"
         }
         
-        result = await self.send_command(appliance, "startProgram", resume_parameters)
+        result = await self.send_device_command(appliance, mac_address, "resumeProgram", resume_parameters)
         
         if result:
             print("▶️ PROGRAMME REPRIS")
@@ -496,7 +516,10 @@ class HonLauncher:
                 "onOffStatus": "1"
             }
         
-        result = await self.send_command(appliance, "startProgram", stop_parameters)
+        if stop_machine:
+            result = await self.send_command(appliance, "startProgram", stop_parameters)
+        else:
+            result = await self.send_device_command(appliance, mac_address, "stopProgram", stop_parameters)
         
         if result:
             if stop_machine:
