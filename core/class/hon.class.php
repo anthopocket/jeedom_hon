@@ -93,6 +93,38 @@ class hon extends eqLogic {
         }
     }
 
+    /* ========================= Dépendances ========================= */
+
+    /** Python du venv du plugin (installé par les dépendances), sinon python3 du système */
+    public static function python() {
+        $venv = realpath(__DIR__ . '/../../resources') . '/venv/bin/python3';
+        return file_exists($venv) ? escapeshellarg($venv) : 'python3';
+    }
+
+    public static function dependancy_info() {
+        $return = [
+            'log'           => __CLASS__ . '_update',
+            'progress_file' => jeedom::getTmpFolder(__CLASS__) . '/dependency',
+            'state'         => 'nok',
+        ];
+        $venv = __DIR__ . '/../../resources/venv/bin/python3';
+        if (file_exists($return['progress_file'])) {
+            $return['state'] = 'in_progress';
+        } elseif (file_exists($venv)) {
+            exec(escapeshellarg($venv) . ' -c "import aiohttp" 2>&1', $out, $code);
+            if ($code === 0) $return['state'] = 'ok';
+        }
+        return $return;
+    }
+
+    public static function dependancy_install() {
+        log::remove(__CLASS__ . '_update');
+        return [
+            'script' => __DIR__ . '/../../resources/install_#stype#.sh ' . jeedom::getTmpFolder(__CLASS__) . '/dependency',
+            'log'    => log::getPathToLog(__CLASS__ . '_update'),
+        ];
+    }
+
     /* ========================= Démon push ========================= */
 
     public static function deamon_info() {
@@ -105,7 +137,10 @@ class hon extends eqLogic {
                 @unlink($pidFile);
             }
         }
-        if (config::byKey('email', __CLASS__) == '' || config::byKey('password', __CLASS__) == '') {
+        if (self::dependancy_info()['state'] != 'ok') {
+            $return['launchable'] = 'nok';
+            $return['launchable_message'] = __('Dépendances non installées', __FILE__);
+        } elseif (config::byKey('email', __CLASS__) == '' || config::byKey('password', __CLASS__) == '') {
             $return['launchable'] = 'nok';
             $return['launchable_message'] = __('Email et mot de passe hOn non configurés', __FILE__);
         }
@@ -119,7 +154,7 @@ class hon extends eqLogic {
             throw new Exception(__('Veuillez vérifier la configuration', __FILE__));
         }
         $script = realpath(__DIR__ . '/../../resources/hond/hond.py');
-        $cmd = 'python3 -u ' . escapeshellarg($script)
+        $cmd = self::python() . ' -u ' . escapeshellarg($script)
              . ' --loglevel ' . escapeshellarg(log::convertLogLevel(log::getLogLevel(__CLASS__)))
              . ' --callback ' . escapeshellarg(network::getNetworkAccess('internal', 'http:127.0.0.1:port:comp') . '/plugins/hon/core/php/jeeHon.php')
              . ' --apikey ' . escapeshellarg(jeedom::getApiKey(__CLASS__))
@@ -255,13 +290,13 @@ class hon extends eqLogic {
 
             if (count($devices) === 1) {
                 $device = $devices[0];
-                $cmd = 'cd ' . escapeshellarg($resourcesDir) . ' && python3 hon_cron_updater.py ' .
+                $cmd = 'cd ' . escapeshellarg($resourcesDir) . ' && ' . self::python() . ' hon_cron_updater.py ' .
                        escapeshellarg($device['mac_address']) . ' ' .
                        escapeshellarg($device['appliance_type']) . ' ' .
                        escapeshellarg($tokens['id_token']) . ' ' .
                        escapeshellarg($tokens['cognito_token']);
             } else {
-                $cmd = 'cd ' . escapeshellarg($resourcesDir) . ' && python3 hon_cron_updater.py ' .
+                $cmd = 'cd ' . escapeshellarg($resourcesDir) . ' && ' . self::python() . ' hon_cron_updater.py ' .
                        escapeshellarg($devices[0]['mac_address']) . ' ' .
                        escapeshellarg($devices[0]['appliance_type']) . ' ' .
                        escapeshellarg($tokens['id_token']) . ' ' .
@@ -398,13 +433,13 @@ class hon extends eqLogic {
             $dataDir      = $resourcesDir . '/hon/data';
 
             log::add('hon', 'info', 'Génération des JSONs des programmes...');
-            $cmd1    = 'cd ' . escapeshellarg($resourcesDir) . ' && python3 hon_json_generator_programme.py ' .
+            $cmd1    = 'cd ' . escapeshellarg($resourcesDir) . ' && ' . self::python() . ' hon_json_generator_programme.py ' .
                        escapeshellarg($email) . ' ' . escapeshellarg($password) . ' 2>&1';
             $output1 = shell_exec($cmd1);
             log::add('hon', 'debug', 'Sortie génération programmes : ' . $output1);
 
             log::add('hon', 'info', 'Génération des JSONs des informations des appareils...');
-            $cmd2    = 'cd ' . escapeshellarg($resourcesDir) . ' && python3 hon_json_generator_device.py ' .
+            $cmd2    = 'cd ' . escapeshellarg($resourcesDir) . ' && ' . self::python() . ' hon_json_generator_device.py ' .
                        escapeshellarg($email) . ' ' . escapeshellarg($password) . ' 2>&1';
             $output2 = shell_exec($cmd2);
             log::add('hon', 'debug', 'Sortie génération infos : ' . $output2);
@@ -573,7 +608,7 @@ class hon extends eqLogic {
 
     /** Récupère les tokens d'authentification */
     private static function getTokens($email, $password) {
-        $cmd    = 'cd ' . escapeshellarg(__DIR__ . '/../../resources') . ' && python3 hon_get_tokens.py ' .
+        $cmd    = 'cd ' . escapeshellarg(__DIR__ . '/../../resources') . ' && ' . self::python() . ' hon_get_tokens.py ' .
                   escapeshellarg($email) . ' ' . escapeshellarg($password);
         $output = shell_exec($cmd . ' 2>&1');
         log::add('hon', 'debug', 'Sortie tokens : ' . preg_replace('/"(id_token|cognito_token)":\s*"[^"]*"/', '"$1": "***"', $output));
@@ -966,7 +1001,7 @@ class hon extends eqLogic {
             }
 
             $resourcesDir = __DIR__ . '/../../resources';
-            $cmd = 'cd ' . escapeshellarg($resourcesDir) . ' && python3 hon_launcher.py ' .
+            $cmd = 'cd ' . escapeshellarg($resourcesDir) . ' && ' . self::python() . ' hon_launcher.py ' .
                    escapeshellarg(config::byKey('email', 'hon')) . ' ' .
                    escapeshellarg(config::byKey('password', 'hon')) . ' ' .
                    escapeshellarg($programName) . ' ' .

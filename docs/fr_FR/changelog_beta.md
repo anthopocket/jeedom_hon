@@ -25,6 +25,7 @@
 - Correction : machine à l'arrêt → temps restant, lavage principal et heure de fin à 0 (la machine publie la durée du programme affiché sur son écran).
 - Correction : la température et l'essorage ne sont plus remis à 0 en fin de cycle (ils restaient bloqués à 0 avec le push).
 - Jetons masqués aussi dans la ligne « Sortie tokens » du log.
+- Dépendances : installation gérée par Jeedom (venv Python propre au plugin avec aiohttp, script resources/install_apt.sh) ; le démon ne démarre que si elles sont installées.
 - Nettoyage : suppression du code et des fichiers inutilisés (méthodes mortes, 7 actions AJAX, fichiers du modèle de plugin, WM/TD_programme.json).
 
 # 15/08/2025

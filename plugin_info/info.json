@@ -9,7 +9,7 @@
     "author": "anthopocket",
     "require": "4.4",
     "category": "devicecommunication",
-    "hasDependency": false,
+    "hasDependency": true,
     "hasOwnDeamon": true,
     "maxDependancyInstallTime": 30,
     "changelog": "https://github.com/jeedom/plugin-hon/blob/stable/docs/fr_FR/changelog.md",

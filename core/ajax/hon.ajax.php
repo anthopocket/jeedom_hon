@@ -51,7 +51,8 @@ try {
         }
 
         // Test de connexion via le script Python
-        $cmd = 'cd ' . dirname(__FILE__) . '/../../resources && python3 hon_get_tokens.py ' . 
+        require_once dirname(__FILE__) . '/../class/hon.class.php';
+        $cmd = 'cd ' . escapeshellarg(dirname(__FILE__) . '/../../resources') . ' && ' . hon::python() . ' hon_get_tokens.py ' . 
                escapeshellarg($email) . ' ' . escapeshellarg($password);
 
         $output = shell_exec($cmd . ' 2>&1');
