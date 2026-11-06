@@ -1164,6 +1164,10 @@ class hon extends eqLogic {
 
                 $currentValue = $cmd->execCmd();
                 if (is_bool($newValue)) $newValue = $newValue ? 1 : 0;
+                // Heure de fin : ISO UTC → heure locale HH:MM
+                if ($pythonKey === 'estimated_end_time' && $newValue !== '' && ($ts = strtotime($newValue)) !== false) {
+                    $newValue = date('H:i', $ts);
+                }
                 if ($currentValue != $newValue) {
                     $cmd->event($newValue);
                     $hasUpdates = true;
@@ -1244,6 +1248,9 @@ class hon extends eqLogic {
      *   - une info           "desired_<param>" (valeur choisie, envoyée au démarrage)
      * Pour ajouter un paramètre (ex. rinseIterations, delayTime), il suffit de l'ajouter ici.
      */
+    /** Liste affichée tant qu'aucun programme n'est choisi (une liste vide affiche « #listValue# ») */
+    const EMPTY_LIST = '|—';
+
     private static $programParams = [
         'WM' => [
             'temp'                => ['name' => 'Température',       'unit' => '°C'],
@@ -1506,7 +1513,15 @@ class hon extends eqLogic {
                 $info->setUnite($def['unit']);
                 $info->save();
             }
-            $this->upsertSelectCommand('set_' . $param, 'Choix ' . mb_strtolower($def['name']), '', 'desired_' . $param, null, $isSlider ? 'slider' : 'select');
+            // Anciens noms (première version du plugin) → noms actuels
+            foreach (['set_' . $param => 'Choix ', 'desired_' . $param => 'Réglage '] as $lid => $prefix) {
+                $old = $this->getCmd(null, $lid);
+                if (is_object($old) && in_array($old->getName(), ['Régler la température', 'Température choisie'])) {
+                    $old->setName($this->freeCmdName($prefix . mb_strtolower($def['name'])));
+                    $old->save();
+                }
+            }
+            $this->upsertSelectCommand('set_' . $param, 'Choix ' . mb_strtolower($def['name']), self::EMPTY_LIST, 'desired_' . $param, null, $isSlider ? 'slider' : 'select');
         }
 
         // Boutons
@@ -1558,7 +1573,7 @@ class hon extends eqLogic {
                 $setCmd->setConfiguration('step',     strval($step));
                 $infoCmd->event($spec === null ? '' : $spec['default']);
             } elseif ($spec === null) {
-                $setCmd->setConfiguration('listValue', '');
+                $setCmd->setConfiguration('listValue', self::EMPTY_LIST);
                 $infoCmd->event('');
             } else {
                 $pairs = [];
@@ -1585,7 +1600,7 @@ class hon extends eqLogic {
         foreach ($this->getManagedParams() as $param => $def) {
             $setCmd = $this->getCmd(null, 'set_' . $param);
             if (is_object($setCmd)) {
-                $setCmd->setConfiguration('listValue', '');
+                $setCmd->setConfiguration('listValue', self::EMPTY_LIST);
                 $setCmd->save();
             }
             $infoCmd = $this->getCmd(null, 'desired_' . $param);
